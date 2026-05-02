@@ -259,18 +259,13 @@ try {
     Initial-Log "Console::OutputEncoding FAILED (expected in PS2EXE NoConsole): $($_.Exception.Message)"
 }
 
-Initial-Log "Sub-checkpoint: pre Host.UI.RawUI check"
+Initial-Log "Sub-checkpoint: PS2EXE host detect"
 # PS2EXE -NoConsole modunda console yok — Write-* cagrilari MessageBox'a donusur
-# Ana process'te console yoksa tum Write/Out cagrilarini sessize al (runspace'ler etkilenmez)
-$script:HasConsole = $true
-try {
-    $null = $Host.UI.RawUI.WindowSize.Width
-    Initial-Log "Host.UI.RawUI.WindowSize accessible — HasConsole=true"
-} catch {
-    $script:HasConsole = $false
-    Initial-Log "Host.UI.RawUI failed — HasConsole=false ($($_.Exception.Message))"
-}
-if (-not $script:HasConsole) {
+# Doğru tespit: Host.Name = "PSRunspace-Host" (PS2EXE'in özel host'u). RawUI.WindowSize
+# erisilebilir AMA gerçek console yok — bu yüzden RawUI check'i false-positive verir.
+$script:IsPs2Exe = ($Host.Name -eq 'PSRunspace-Host' -or $Host.Name -like '*ConsoleHost-NoConsole*')
+Initial-Log "Host.Name='$($Host.Name)' | IsPs2Exe=$script:IsPs2Exe"
+if ($script:IsPs2Exe) {
     Initial-Log "Installing Write-*/Out-* overrides for PS2EXE NoConsole"
     # PS2EXE -NoConsole detected — output stream'lari sessize al (sadece ana process scope)
     # Hata stream'leri MessageBox olarak cikiyordu; bu override hepsini yutar
@@ -314,6 +309,8 @@ if (-not $global:GeminiPool) {
 # #endregion 2 -- YONETICI KONTROL, RUNSPACE POOL, TEMA
 Initial-Log "Checkpoint: region2 DONE"
 
+
+Initial-Log "Checkpoint: entering region3 (GLOBAL DEGISKENLER)"
 
 # =========================================================================
 # #region 3 -- GLOBAL DEGISKENLER & DOSYA YOLLARI
@@ -380,7 +377,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.0.4"
+$global:AppVersion = "1.0.5"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -561,6 +558,7 @@ $global:TweakList = [ordered]@{}
 # Varsayılan Ayarları Getiren Fonksiyon
 
 # #endregion 3 -- GLOBAL DEGISKENLER & DOSYA YOLLARI
+Initial-Log "Checkpoint: region3 DONE"
 
 
 # =========================================================================
