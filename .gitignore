@@ -1,0 +1,67 @@
+# =========================================================
+# Gemini System Care — .gitignore
+# Repo'ya yanlislikla yedek/cache/personal dosyalar girmesin
+# =========================================================
+
+# Backup ve geliştirme yedekleri
+*.backup
+*.bak
+*.bak[1-9]
+*.phase1_backup
+*.phase2_backup
+*.before_tweaks_overhaul
+*.old
+*~
+# Genis pattern: TemizlikAsistani.ps1.HERHANGI_BIR_SEY (suffix'li yedeklere karsi)
+TemizlikAsistani.ps1.*
+!TemizlikAsistani.ps1
+# (Yukaridaki ilk satir TUM .ps1.* uzantilarini ignore eder, ikinci satir asil dosyayi geri ekler)
+
+# DENEYSEL referans klasörü (FR33THY scriptleri yerel referans, repo'ya gitmesin)
+DENEYSEL/
+
+# Build çıktıları (lokal compile yaptığında)
+TemizlikAsistani.exe
+SHA256SUMS.txt
+*.exe.config
+
+# PowerShell cache
+*.psm1.cache
+
+# Visual Studio Code / editör artıkları
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Claude Code session/agent calisma dosyalari (KESINLIKLE public repo'ya gitmesin)
+.claude/
+.cursor/
+.copilot/
+
+# OpenAI / Anthropic / API anahtarlari (yanlislikla repo'ya gitmesin)
+.env
+.env.local
+*.env
+secrets.json
+config.local.*
+
+# Windows sistem dosyaları
+Thumbs.db
+desktop.ini
+.DS_Store
+
+# Log dosyaları
+*.log
+
+# Geçici ve cache
+temp/
+tmp/
+*.tmp
+
+# AppData test verisi (yanlışlıkla repo'ya kopyalanırsa)
+GeminiCare/
+
+# IntelliJ vs (ihtimal)
+*.iml
+.idea/

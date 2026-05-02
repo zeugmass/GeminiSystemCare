@@ -1,0 +1,52 @@
+# 📘 GEMINI SISTEM BAKIM ARACI (ULTIMATE) - KULLANIM KILAVUZU
+
+### 🟢 1. GİRİŞ: Program Nedir?
+Gemini Sistem Bakım Aracı; Windows işletim sisteminizi **temizlemek**, **hızlandırmak**, **özelleştirmek** ve **güncel tutmak** için tasarlanmış gelişmiş bir PowerShell aracıdır.
+Program **Yönetici Yetkisi** ile çalışır ve sisteminizdeki gereksiz dosyaları silmekten, gizlilik ayarlarını (kamera, mikrofon vb.) yönetmeye, uygulama güncellemelerinden sistem onarımına kadar her şeyi tek bir pencereden yapmanızı sağlar.
+
+---
+
+### 🟡 2. GELİŞME: Nasıl Kullanılır?
+
+Program sekmeler halinde kategorize edilmiştir. İşte adım adım kullanım rehberi:
+
+**A. TEMİZLİK (Tarayıcılar, Uygulamalar, Sistem, ShellBags)**
+*   Bu sekmelerde bilgisayarınızdaki gereksiz dosyalar (çerezler, önbellekler, geçmiş dosyaları) listelenir.
+*   **Analiz Et:** Silmeden önce ne kadar yer açılacağını ve hangi dosyaların silineceğini gösterir.
+*   **Başlat:** Seçilen öğeleri temizler.
+*   **Silme Yöntemi:** Sağ alttan "Hızlı Silme" veya verilerin kurtarılamaması için "Güvenli Silme (Zeroes/Random)" seçebilirsiniz.
+*   **ShellBags:** Windows'un klasör pencerelerini (boyut, konum) hatırladığı geçmişi temizler.
+
+**B. WINGET (Uygulama Yönetimi)**
+*   Bilgisayarınızdaki uygulamaları güncellemek, kaldırmak veya yenilerini kurmak için kullanılır.
+*   **♻ Denetle:** Yüklü uygulamaları tarar.
+*   **Winget Update:** Tüm uygulamaları tek tıkla günceller.
+*   **Windows Uygulamaları:** Windows ile gömülü gelen (Kamera, Xbox, Haritalar vb.) uygulamaları da buradan kaldırabilirsiniz.
+*   **Liste Yöneticisi:** Kendi favori uygulamalarınızı listeye ekleyip çıkarabilirsiniz.
+
+**C. TWEAKS (Optimizasyon ve Gizlilik)**
+*   Windows'un ince ayarlarının yapıldığı merkezdir.
+*   **♻ Denetle:** Mevcut sistem ayarlarınızı tarar ve aktif olanları (zaten yapılmış olanları) **yeşil** ile işaretler.
+*   **Seçilenleri Uygula:** İşaretlediğiniz ayarları sisteme uygular (Örn: Karanlık mod, Performans ayarları, Gizlilik kısıtlamaları).
+*   **Geri Alma:** Bir ayarın tikini kaldırıp "Uygula" derseniz, o ayar Windows varsayılanına döner.
+*   **★ Önerilen:** Sizin için kaydedilmiş favori ayar profilinizi yükler.
+*   **Not:** Gizlilik ayarları (Kamera/Mikrofon kapatma) hem Windows ayarlarını hem de Grup İlkelerini (Policy) yönetir.
+
+**D. ONARIM (Sistem Tamiri)**
+*   İnternet bağlantısı sorunları veya sistem dosyası hataları için hazır komutlar içerir.
+*   Örneğin: "DNS Temizle" veya "SFC /Scannow" gibi komutları tek tıkla çalıştırır.
+
+**E. ARAÇLAR VE AYARLAR**
+*   **🛠 Araçlar:** Samsung Magician, GPU-Z gibi mağazada olmayan özel araçları resmi sitelerinden bulup indirir ve kurar.
+*   **⚙ Ayarlar:** Programın kendi ayarlarını (Yoksayılanlar listesi, özel klasörler vb.) yedeklemenizi (Dışa Aktar) veya geri yüklemenizi (İçe Aktar) sağlar.
+
+---
+
+### 🔴 3. SONUÇ: Çalışma Mantığı ve Güvenlik
+
+*   **Sistem Geri Yükleme:** Program, kritik işlemlerden (Tweaks, Temizlik) önce otomatik olarak bir **Sistem Geri Yükleme Noktası** oluşturur. Bir sorun olursa Windows'u o tarihe geri alabilirsiniz.
+*   **Akıllı Algılama:** Program, manuel olarak (Windows Ayarlarından) yaptığınız değişiklikleri de algılar. Örneğin kamerayı elle kapattıysanız, programda da "Kapalı" olarak görünür.
+*   **Winapp2 Desteği:** Temizlik kuralları, dünya çapında güncellenen `Winapp2.ini` veritabanından otomatik çekilir.
+*   **Loglama:** Yapılan her işlem sağ taraftaki "İşlem Kayıtları" ekranında detaylıca yazar. Hata alırsanız sebebini orada görebilirsiniz.
+
+*Güvenli, Hızlı ve Tam Kontrol.*

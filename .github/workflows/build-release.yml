@@ -1,0 +1,115 @@
+name: Build & Release (PS1 → EXE)
+
+# Tetikleyici: vX.Y.Z formatında bir tag push edildiğinde otomatik çalışır.
+# Geliştirme akışı:
+#   1. PS1 dosyasını edit et, $global:AppVersion = "1.2.0" güncelle
+#   2. git add + commit + push
+#   3. git tag v1.2.0
+#   4. git push --tags     ← bu workflow'u tetikler
+#   5. ~3 dakika sonra GitHub Releases'ta yeni release ve EXE/PS1/SHA256 hazır
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Compile and Release
+    runs-on: windows-latest
+    permissions:
+      contents: write   # Release oluşturmak için gerekli
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup PowerShell environment
+        shell: powershell
+        run: |
+          Write-Host "PowerShell sürümü: $($PSVersionTable.PSVersion)"
+          [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
+
+      - name: Install PS2EXE module
+        shell: powershell
+        run: |
+          Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
+          Install-Module -Name ps2exe -Scope CurrentUser -Force -SkipPublisherCheck
+
+      - name: Validate PowerShell syntax
+        shell: powershell
+        run: |
+          $errors = $null
+          [void][System.Management.Automation.Language.Parser]::ParseFile(
+            "$env:GITHUB_WORKSPACE\TemizlikAsistani.ps1", [ref]$null, [ref]$errors
+          )
+          if ($errors -and $errors.Count -gt 0) {
+            Write-Host "::error::Sentaks hatası: $($errors.Count) hata"
+            $errors | ForEach-Object { Write-Host "  L$($_.Extent.StartLineNumber): $($_.Message)" }
+            exit 1
+          }
+          Write-Host "✓ Sentaks temiz"
+
+      - name: Compile PS1 → EXE
+        shell: powershell
+        run: |
+          $tag = "${env:GITHUB_REF_NAME}"
+          $version = $tag -replace '^v',''
+          Write-Host "Building version: $version"
+
+          Invoke-PS2EXE `
+            -InputFile "TemizlikAsistani.ps1" `
+            -OutputFile "TemizlikAsistani.exe" `
+            -Title "Gemini Sistem Bakım Aracı" `
+            -Description "Windows için kapsamlı sistem bakım, optimizasyon ve tweak aracı" `
+            -Company "GeminiCare" `
+            -Product "Gemini System Care" `
+            -Copyright "© 2026" `
+            -Version $version `
+            -RequireAdmin `
+            -Sta `
+            -NoConsole `
+            -Verbose
+
+          if (-not (Test-Path "TemizlikAsistani.exe")) {
+            Write-Host "::error::EXE oluşturulamadı"
+            exit 1
+          }
+
+          $size = (Get-Item "TemizlikAsistani.exe").Length / 1KB
+          Write-Host "✓ EXE hazır: $([Math]::Round($size, 1)) KB"
+
+      - name: Calculate SHA256 hashes
+        shell: powershell
+        run: |
+          $files = @(
+            "TemizlikAsistani.exe",
+            "TemizlikAsistani.ps1"
+          )
+          $lines = @()
+          foreach ($f in $files) {
+            if (Test-Path $f) {
+              $hash = (Get-FileHash $f -Algorithm SHA256).Hash
+              $lines += "$hash  $f"
+              Write-Host "  $f → $hash"
+            }
+          }
+          $lines -join "`n" | Out-File -FilePath "SHA256SUMS.txt" -Encoding ASCII -NoNewline
+          Write-Host "✓ SHA256SUMS.txt yazıldı"
+          Get-Content "SHA256SUMS.txt"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          files: |
+            TemizlikAsistani.exe
+            TemizlikAsistani.ps1
+            SHA256SUMS.txt
+            Baslat.cmd
+            BeniOku.txt
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
