@@ -1,12 +1,15 @@
 name: Build & Release (PS1 → EXE)
 
-# Tetikleyici: vX.Y.Z formatında bir tag push edildiğinde otomatik çalışır.
-# Geliştirme akışı:
-#   1. PS1 dosyasını edit et, $global:AppVersion = "1.2.0" güncelle
+# Tetikleyici: vX.Y.Z formatinda bir tag push edildiginde otomatik calisir.
+# Gelistirme akisi:
+#   1. PS1 dosyasini edit et, $global:AppVersion = "1.2.0" guncelle
 #   2. git add + commit + push
 #   3. git tag v1.2.0
 #   4. git push --tags     ← bu workflow'u tetikler
-#   5. ~3 dakika sonra GitHub Releases'ta yeni release ve EXE/PS1/SHA256 hazır
+#   5. ~3 dakika sonra GitHub Releases'ta yeni release ve EXE/PS1/SHA256 hazir
+#
+# NOT: Tum 'shell: pwsh' (PowerShell 7+) kullanilir cunku UTF-8 default'tur.
+# 'shell: powershell' (5.1) Turkce/Unicode karakterlerle encoding sorunu yasar.
 on:
   push:
     tags:
@@ -17,40 +20,40 @@ jobs:
     name: Compile and Release
     runs-on: windows-latest
     permissions:
-      contents: write   # Release oluşturmak için gerekli
+      contents: write   # Release olusturmak icin gerekli
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
       - name: Setup PowerShell environment
-        shell: powershell
+        shell: pwsh
         run: |
-          Write-Host "PowerShell sürümü: $($PSVersionTable.PSVersion)"
+          Write-Host "PowerShell surumu: $($PSVersionTable.PSVersion)"
           [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
 
       - name: Install PS2EXE module
-        shell: powershell
+        shell: pwsh
         run: |
           Set-PSRepository -Name PSGallery -InstallationPolicy Trusted
           Install-Module -Name ps2exe -Scope CurrentUser -Force -SkipPublisherCheck
 
       - name: Validate PowerShell syntax
-        shell: powershell
+        shell: pwsh
         run: |
           $errors = $null
           [void][System.Management.Automation.Language.Parser]::ParseFile(
             "$env:GITHUB_WORKSPACE\TemizlikAsistani.ps1", [ref]$null, [ref]$errors
           )
           if ($errors -and $errors.Count -gt 0) {
-            Write-Host "::error::Sentaks hatası: $($errors.Count) hata"
+            Write-Host "::error::Syntax error: $($errors.Count) hata"
             $errors | ForEach-Object { Write-Host "  L$($_.Extent.StartLineNumber): $($_.Message)" }
             exit 1
           }
-          Write-Host "✓ Sentaks temiz"
+          Write-Host "[OK] Syntax clean"
 
-      - name: Compile PS1 → EXE
-        shell: powershell
+      - name: Compile PS1 to EXE
+        shell: pwsh
         run: |
           $tag = "${env:GITHUB_REF_NAME}"
           $version = $tag -replace '^v',''
@@ -59,11 +62,11 @@ jobs:
           Invoke-PS2EXE `
             -InputFile "TemizlikAsistani.ps1" `
             -OutputFile "TemizlikAsistani.exe" `
-            -Title "Gemini Sistem Bakım Aracı" `
-            -Description "Windows için kapsamlı sistem bakım, optimizasyon ve tweak aracı" `
+            -Title "Gemini Sistem Bakim Araci" `
+            -Description "Windows icin kapsamli sistem bakim, optimizasyon ve tweak araci" `
             -Company "GeminiCare" `
             -Product "Gemini System Care" `
-            -Copyright "© 2026" `
+            -Copyright "(c) 2026" `
             -Version $version `
             -RequireAdmin `
             -Sta `
@@ -71,15 +74,15 @@ jobs:
             -Verbose
 
           if (-not (Test-Path "TemizlikAsistani.exe")) {
-            Write-Host "::error::EXE oluşturulamadı"
+            Write-Host "::error::EXE not created"
             exit 1
           }
 
           $size = (Get-Item "TemizlikAsistani.exe").Length / 1KB
-          Write-Host "✓ EXE hazır: $([Math]::Round($size, 1)) KB"
+          Write-Host "[OK] EXE ready: $([Math]::Round($size, 1)) KB"
 
       - name: Calculate SHA256 hashes
-        shell: powershell
+        shell: pwsh
         run: |
           $files = @(
             "TemizlikAsistani.exe",
@@ -90,11 +93,11 @@ jobs:
             if (Test-Path $f) {
               $hash = (Get-FileHash $f -Algorithm SHA256).Hash
               $lines += "$hash  $f"
-              Write-Host "  $f → $hash"
+              Write-Host "  $f -> $hash"
             }
           }
           $lines -join "`n" | Out-File -FilePath "SHA256SUMS.txt" -Encoding ASCII -NoNewline
-          Write-Host "✓ SHA256SUMS.txt yazıldı"
+          Write-Host "[OK] SHA256SUMS.txt written"
           Get-Content "SHA256SUMS.txt"
 
       - name: Create GitHub Release
