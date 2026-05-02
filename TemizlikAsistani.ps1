@@ -30,9 +30,10 @@ trap {
 Initial-Log "═══ Script execution started ═══"
 
 # ╔═════════════════════════════════════════════════════════════════════════════╗
-# ║  EARLY CONSOLE HIDE (PS2EXE -NoConsole olmadan compile ediliyor — siyah     ║
-# ║  terminal acilir, biz hemen gizleriz). Buyuk Add-Type'tan once kucuk        ║
-# ║  P/Invoke ile yapiyoruz ki console acik kalma suresi ~50ms olsun.          ║
+# ║  EARLY CONSOLE DETACH (PS2EXE -NoConsole olmadan compile ediliyor — siyah   ║
+# ║  terminal acilir). ShowWindow(SW_HIDE) yetmedi (Windows still shows window).║
+# ║  FreeConsole ise process'i mevcut console'dan tamamen detach eder, pencere  ║
+# ║  hemen kapanir. Write-* override'lari zaten kuruldugu icin sorun olmaz.     ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 try {
     Add-Type -Name 'EarlyHide' -Namespace 'Win32' -MemberDefinition @'
@@ -40,16 +41,22 @@ try {
         public static extern System.IntPtr GetConsoleWindow();
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        public static extern bool FreeConsole();
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        public static extern bool AllocConsole();
 '@ -ErrorAction Stop
     $earlyHandle = [Win32.EarlyHide]::GetConsoleWindow()
     if ($earlyHandle -ne [IntPtr]::Zero) {
-        [void][Win32.EarlyHide]::ShowWindow($earlyHandle, 0)  # SW_HIDE = 0
-        Initial-Log "Early console hide OK (handle=$earlyHandle)"
+        # Once gizle (anlik), sonra tamamen detach et — pencere kapanir
+        [void][Win32.EarlyHide]::ShowWindow($earlyHandle, 0)
+        [void][Win32.EarlyHide]::FreeConsole()
+        Initial-Log "Early console DETACHED (FreeConsole) — handle was $earlyHandle"
     } else {
-        Initial-Log "Early console hide: no console (PS2EXE NoConsole or PS1 mode)"
+        Initial-Log "Early console: no console (PS2EXE NoConsole or PS1 mode)"
     }
 } catch {
-    Initial-Log "Early console hide FAILED: $($_.Exception.Message)"
+    Initial-Log "Early console detach FAILED: $($_.Exception.Message)"
 }
 
 Initial-Log "PowerShell host: $($Host.Name) | Version: $($PSVersionTable.PSVersion)"
@@ -408,7 +415,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.0.7"
+$global:AppVersion = "1.0.8"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -8153,17 +8160,22 @@ function Refresh-Tools-Menu {
     $ctxToolsMenu.Items.Add($itmManage) | Out-Null
 
     # 4. BÖLÜM: PROGRAM GÜNCELLEMESI
+    # MenuItem.Foreground tema tarafindan override ediliyor — Header'i TextBlock olarak
+    # set etmek garanti calisir (TextBlock'un kendi Foreground'u inherit override etmez).
     $ctxToolsMenu.Items.Add((New-Object System.Windows.Controls.Separator)) | Out-Null
     $itmAppUpdate = New-Object System.Windows.Controls.MenuItem
+    $tbAppUpdate = New-Object System.Windows.Controls.TextBlock
     if ($global:UpdateAvailable) {
-        $itmAppUpdate.Header = "🔔 Programı Güncelle ($($global:UpdateAvailable.Tag) hazır)"
-        $itmAppUpdate.Foreground = [System.Windows.Media.Brushes]::LimeGreen
-        $itmAppUpdate.FontWeight = "Bold"
+        $tbAppUpdate.Text = "🔔 Programı Güncelle ($($global:UpdateAvailable.Tag) hazır)"
+        $tbAppUpdate.Foreground = [System.Windows.Media.Brushes]::LimeGreen
+        $tbAppUpdate.FontWeight = "Bold"
     } else {
-        $itmAppUpdate.Header = "🔄 Programı Güncelle (kontrol et)"
-        # Cyan tonu — tema ile uyumlu, MenuItem koyu arka planda net okunur
-        $itmAppUpdate.Foreground = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.ColorConverter]::ConvertFromString("#4CC2FF"))
+        $tbAppUpdate.Text = "🔄 Programı Güncelle (kontrol et)"
+        # Acik turkuaz — koyu menu zemininde net okunur
+        $tbAppUpdate.Foreground = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.ColorConverter]::ConvertFromString("#4CC2FF"))
+        $tbAppUpdate.FontWeight = "SemiBold"
     }
+    $itmAppUpdate.Header = $tbAppUpdate
     $itmAppUpdate.Add_Click({
         if ($global:UpdateAvailable) {
             Show-AppUpdateWindow
