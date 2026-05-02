@@ -1,6 +1,43 @@
 ﻿# =============================================================================
 # GEMINI SISTEM BAKIM ARACI (ULTIMATE V9.8)
 # =============================================================================
+
+# ╔═════════════════════════════════════════════════════════════════════════════╗
+# ║  PERSISTENT INIT DEBUG LOG + GLOBAL TRAP                                   ║
+# ║  PS2EXE -NoConsole modunda mistirli "False" / hata MessageBox'larini bulmak║
+# ║  icin her checkpoint'i diske yaz, tum yakalanmamis exception'lari trap'le. ║
+# ║  Log dosyasi: %TEMP%\GeminiCare_init_<timestamp>.log                       ║
+# ║  Trap: continue ile devam — programi durdurmaz, sadece kaydeder.            ║
+# ╚═════════════════════════════════════════════════════════════════════════════╝
+$global:InitLogPath = "$env:TEMP\GeminiCare_init_$(Get-Date -Format 'yyyyMMdd_HHmmss')_pid$PID.log"
+function Initial-Log {
+    param([string]$msg)
+    try {
+        $line = "[$(Get-Date -Format 'HH:mm:ss.fff')] $msg"
+        Add-Content -Path $global:InitLogPath -Value $line -Encoding UTF8 -ErrorAction SilentlyContinue
+    } catch {}
+}
+trap {
+    try {
+        Initial-Log "TRAP: $($_.Exception.GetType().FullName)"
+        Initial-Log "  Message: $($_.Exception.Message)"
+        Initial-Log "  Position: $($_.InvocationInfo.PositionMessage -replace "`n","  |  ")"
+        Initial-Log "  StackTrace: $($_.ScriptStackTrace -replace "`n","  |  ")"
+        Initial-Log "  CategoryInfo: $($_.CategoryInfo)"
+    } catch {}
+    continue
+}
+Initial-Log "═══ Script execution started ═══"
+Initial-Log "PowerShell host: $($Host.Name) | Version: $($PSVersionTable.PSVersion)"
+Initial-Log "Script root: $PSScriptRoot | PID: $PID"
+try {
+    $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+    Initial-Log "MainModule: $exePath"
+} catch {
+    Initial-Log "MainModule: <hata> $($_.Exception.Message)"
+}
+Initial-Log "Checkpoint: pre-region1 (C# INTEROP)"
+
 # DOSYA YAPISI (ICINDEKILER)
 # -----------------------------------------------------------------------------
 #   #region 01  C# INTEROP ............................. Native methods, SecureWiper, RamCleaner
@@ -23,6 +60,8 @@
 # region'lari katlayabilirsin. Her region acik yorum + --- ayrac cizgileriyle belli.
 # =============================================================================
 
+
+Initial-Log "Checkpoint: entering region1 (C# INTEROP / Add-Type)"
 
 # =========================================================================
 # #region 1 -- C# INTEROP (Native Methods, SecureWiper, RamCleaner, vb.)
@@ -181,9 +220,12 @@ $global:ConsoleHandle = [NativeMethods]::GetConsoleWindow()
 # --- YARDIMCI FONKSİYONLAR ---
 
 # #endregion 1 -- C# INTEROP (Native Methods, SecureWiper, RamCleaner, vb.)
+Initial-Log "Checkpoint: region1 (C# INTEROP) DONE"
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region2 (Admin/Runspace/Theme)"
+
 # #region 2 -- YONETICI KONTROL, RUNSPACE POOL, TEMA
 # =========================================================================
 
@@ -196,22 +238,40 @@ function Refresh-Wallpaper {
     [NativeMethods]::SystemParametersInfo(20, 0, $null, 3)
 }
 
+Initial-Log "Sub-checkpoint: pre admin check"
 # --- YÖNETİCİ KONTROLÜ (GÜNCELLENDİ) ---
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
-if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
+$isAdmin = $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+Initial-Log "Admin check: IsInRole=$isAdmin | PSCommandPath='$PSCommandPath'"
+if (-not $isAdmin) {
+    Initial-Log "Admin elevation triggered, exiting parent process"
     # Eğer yönetici değilse, kendini yönetici olarak yeniden başlatır
     Start-Process powershell.exe "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
     exit
 }
 
+Initial-Log "Sub-checkpoint: pre Console::OutputEncoding"
 # PS2EXE -NoConsole modunda Console nesnesi olmaz — try/catch ile sarmal
-try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+try {
+    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+    Initial-Log "Console::OutputEncoding set OK"
+} catch {
+    Initial-Log "Console::OutputEncoding FAILED (expected in PS2EXE NoConsole): $($_.Exception.Message)"
+}
 
+Initial-Log "Sub-checkpoint: pre Host.UI.RawUI check"
 # PS2EXE -NoConsole modunda console yok — Write-* cagrilari MessageBox'a donusur
 # Ana process'te console yoksa tum Write/Out cagrilarini sessize al (runspace'ler etkilenmez)
 $script:HasConsole = $true
-try { $null = $Host.UI.RawUI.WindowSize.Width } catch { $script:HasConsole = $false }
+try {
+    $null = $Host.UI.RawUI.WindowSize.Width
+    Initial-Log "Host.UI.RawUI.WindowSize accessible — HasConsole=true"
+} catch {
+    $script:HasConsole = $false
+    Initial-Log "Host.UI.RawUI failed — HasConsole=false ($($_.Exception.Message))"
+}
 if (-not $script:HasConsole) {
+    Initial-Log "Installing Write-*/Out-* overrides for PS2EXE NoConsole"
     # PS2EXE -NoConsole detected — output stream'lari sessize al (sadece ana process scope)
     # Hata stream'leri MessageBox olarak cikiyordu; bu override hepsini yutar
     function global:Write-Host {
@@ -236,19 +296,23 @@ if (-not $script:HasConsole) {
     $global:DebugPreference       = 'SilentlyContinue'
     $global:InformationPreference = 'SilentlyContinue'
     # ErrorActionPreference Continue kalsın — hatalar Add_Loaded'daki try/catch'lerle yakalanir
+    Initial-Log "Overrides installed"
 }
 
+Initial-Log "Sub-checkpoint: pre RunspacePool"
 # --- GLOBAL RUNSPACE POOL (HIZ VE VERİMLİLİK İÇİN) ---
 if (-not $global:GeminiPool) {
     $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
     # En az 1, en fazla 5 paralel iş yapabilen havuz
     $global:GeminiPool = [runspacefactory]::CreateRunspacePool(1, 5, $sessionState, $Host)
     $global:GeminiPool.Open()
+    Initial-Log "RunspacePool created and opened"
 }
 
 # --- YAPILANDIRMA ---
 
 # #endregion 2 -- YONETICI KONTROL, RUNSPACE POOL, TEMA
+Initial-Log "Checkpoint: region2 DONE"
 
 
 # =========================================================================
@@ -316,7 +380,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.0.3"
+$global:AppVersion = "1.0.4"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -500,6 +564,8 @@ $global:TweakList = [ordered]@{}
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region4 (VARSAYILAN VERILER)"
+
 # #region 4 -- VARSAYILAN VERILER (Tweak DB, Winget DB, Repair Tree)
 # =========================================================================
 
@@ -2196,9 +2262,12 @@ function Load-Repair-Tree {
 # --- LOAD WPF ---
 
 # #endregion 4 -- VARSAYILAN VERILER (Tweak DB, Winget DB, Repair Tree)
+Initial-Log "Checkpoint: region4 DONE"
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region5 (XAML TANIMLARI)"
+
 # #region 5 -- XAML TANIMLARI (Ana pencere + Alt pencereler)
 # =========================================================================
 
@@ -3635,9 +3704,12 @@ $xamlPathEdit = @"
 "@
 
 # #endregion 5 -- XAML TANIMLARI (Ana pencere + Alt pencereler)
+Initial-Log "Checkpoint: region5 DONE"
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region6 (XAML YUKLEME)"
+
 # #region 6 -- XAML YUKLEME & FINDNAME BAGLAMALARI
 # =========================================================================
 
@@ -3838,10 +3910,13 @@ if (Test-Path $IkonDosyasi) {
 $global:DoEventsTimer = [System.Diagnostics.Stopwatch]::StartNew()
 
 # #endregion 6 -- XAML YUKLEME & FINDNAME BAGLAMALARI
+Initial-Log "Checkpoint: region6 DONE"
 
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region7 (CEKIRDEK HELPERLAR)"
+
 # #region 7 -- CEKIRDEK HELPERLAR (Do-Events, WpfLog, Format-Size)
 # =========================================================================
 
@@ -3893,9 +3968,12 @@ function Format-Size($bytes) {
 # --- AYAR FONKSİYONLARI ---
 
 # #endregion 7 -- CEKIRDEK HELPERLAR (Do-Events, WpfLog, Format-Size)
+Initial-Log "Checkpoint: region7 DONE"
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region8 (AYAR YONETIMI)"
+
 # #region 8 -- AYAR YONETIMI (Config Save/Load/Restore)
 # =========================================================================
 
@@ -4275,10 +4353,13 @@ function Restore-Checkboxes {
 }
 
 # #endregion 8 -- AYAR YONETIMI (Config Save/Load/Restore)
+Initial-Log "Checkpoint: region8 DONE"
 
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region9 (TWEAK SISTEMI)"
+
 # #region 9 -- TWEAK SISTEMI (IsActive, Apply, Check, Manager)
 # =========================================================================
 
@@ -6685,9 +6766,12 @@ function Check-Tweak-Status {
 # --- TARAYICI & SİSTEM FONKSİYONLARI ---
 
 # #endregion 9 -- TWEAK SISTEMI (IsActive, Apply, Check, Manager)
+Initial-Log "Checkpoint: region9 DONE"
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region10 (TEMIZLIK MOTORU)"
+
 # #region 10 -- TEMIZLIK MOTORU (Winapp2, Resolve-ComplexPath, Process-Tree)
 # =========================================================================
 
@@ -7459,9 +7543,12 @@ function Process-Tree {
 # =========================================================
 
 # #endregion 10 -- TEMIZLIK MOTORU (Winapp2, Resolve-ComplexPath, Process-Tree)
+Initial-Log "Checkpoint: region10 DONE"
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region11 (WORKER)"
+
 # #region 11 -- WORKER & KOMUT CALISTIRMA (Start-Worker-Process)
 # =========================================================================
 
@@ -7645,10 +7732,13 @@ function Refresh-Winget-Status {
 # =========================================================
 
 # #endregion 11 -- WORKER & KOMUT CALISTIRMA (Start-Worker-Process)
+Initial-Log "Checkpoint: region11 DONE"
 
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region12 (BASLANGIC YONETICISI)"
+
 # #region 12 -- BASLANGIC YONETICISI (Refresh-StartupView)
 # =========================================================================
 
@@ -7864,6 +7954,9 @@ function Refresh-StartupView {
 # =============================================================
 
 # #endregion 12 -- BASLANGIC YONETICISI (Refresh-StartupView)
+Initial-Log "Checkpoint: region12 DONE"
+
+Initial-Log "Checkpoint: entering region13 (UI MODAL FONKSIYONLARI)"
 
 # #region 13 -- UI / MODAL FONKSIYONLARI
 # Tools, Profiller, Dashboard, Donanim, Dialog pencereleri,
@@ -11052,12 +11145,15 @@ function Start-LargeFileScan {
 }
 
 # #endregion 13 -- UI / MODAL FONKSIYONLARI
+Initial-Log "Checkpoint: region13 DONE"
 
 
 # --- BAŞLANGIÇ YÖNETİCİSİ OLAYLARI (EVENTS) ---
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region14 (EVENT HANDLERS)"
+
 # #region 14 -- EVENT HANDLERS (Butonlar, Context Menus, Tab Selection)
 # =========================================================================
 
@@ -13493,9 +13589,12 @@ if ($chkDebug) {
 # --- GÜVENLİ KAPANIŞ VE BELLEK TEMİZLİĞİ (V2 - POOL DESTEKLİ) ---
 
 # #endregion 14 -- EVENT HANDLERS (Butonlar, Context Menus, Tab Selection)
+Initial-Log "Checkpoint: region14 DONE"
 
 
 # =========================================================================
+Initial-Log "Checkpoint: entering region15 (PENCERE YASAM DONGUSU)"
+
 # #region 15 -- PENCERE YASAM DONGUSU (Add_Closing, Add_Loaded, ShowDialog)
 # =========================================================================
 
@@ -13934,8 +14033,12 @@ $Win.Add_Loaded({
     Invoke-InitStep "Test-AppUpdate (async)" { Test-AppUpdate }
 
     WpfLog "═══ AÇILIŞ TAMAMLANDI ═══"
+    Initial-Log "Checkpoint: Add_Loaded handler completed"
 })
+Initial-Log "Checkpoint: pre Win.ShowDialog() — UI about to open modally"
 $Win.ShowDialog() | Out-Null
+Initial-Log "Checkpoint: post Win.ShowDialog() — app exit"
 
 # #endregion 15 -- PENCERE YASAM DONGUSU (Add_Closing, Add_Loaded, ShowDialog)
+Initial-Log "Checkpoint: region15 DONE"
 
