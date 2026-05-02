@@ -59,6 +59,11 @@ jobs:
           $version = $tag -replace '^v',''
           Write-Host "Building version: $version"
 
+          # NOT: -NoConsole gecici olarak KALDIRILDI (v1.0.6 deney)
+          # PS2EXE -NoConsole modunda gizli "False" MessageBox sorunu PowerShell-level
+          # override'lari bypass ediyor. -NoConsole'siz konsol penceresi acilir ama
+          # MessageBox spam'i kalkmasi gerekiyor. Stable surumde Win32 API ile
+          # konsol penceresini gizleyecegiz (ShowWindow SW_HIDE).
           Invoke-PS2EXE `
             -InputFile "TemizlikAsistani.ps1" `
             -OutputFile "TemizlikAsistani.exe" `
@@ -70,7 +75,6 @@ jobs:
             -Version $version `
             -RequireAdmin `
             -Sta `
-            -NoConsole `
             -Verbose
 
           if (-not (Test-Path "TemizlikAsistani.exe")) {
