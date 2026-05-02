@@ -28,6 +28,30 @@ trap {
     continue
 }
 Initial-Log "═══ Script execution started ═══"
+
+# ╔═════════════════════════════════════════════════════════════════════════════╗
+# ║  EARLY CONSOLE HIDE (PS2EXE -NoConsole olmadan compile ediliyor — siyah     ║
+# ║  terminal acilir, biz hemen gizleriz). Buyuk Add-Type'tan once kucuk        ║
+# ║  P/Invoke ile yapiyoruz ki console acik kalma suresi ~50ms olsun.          ║
+# ╚═════════════════════════════════════════════════════════════════════════════╝
+try {
+    Add-Type -Name 'EarlyHide' -Namespace 'Win32' -MemberDefinition @'
+        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+        public static extern System.IntPtr GetConsoleWindow();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
+'@ -ErrorAction Stop
+    $earlyHandle = [Win32.EarlyHide]::GetConsoleWindow()
+    if ($earlyHandle -ne [IntPtr]::Zero) {
+        [void][Win32.EarlyHide]::ShowWindow($earlyHandle, 0)  # SW_HIDE = 0
+        Initial-Log "Early console hide OK (handle=$earlyHandle)"
+    } else {
+        Initial-Log "Early console hide: no console (PS2EXE NoConsole or PS1 mode)"
+    }
+} catch {
+    Initial-Log "Early console hide FAILED: $($_.Exception.Message)"
+}
+
 Initial-Log "PowerShell host: $($Host.Name) | Version: $($PSVersionTable.PSVersion)"
 Initial-Log "Script root: $PSScriptRoot | PID: $PID"
 try {
@@ -215,7 +239,14 @@ Add-Type -TypeDefinition $nativeCode -Language CSharp
 
 # --- KONSOL PENCERESİNİ GİZLEME VE DEBUG SWITCH İÇİN GLOBAL HANDLE ---
 $global:ConsoleHandle = [NativeMethods]::GetConsoleWindow()
-[NativeMethods]::ShowWindow($global:ConsoleHandle, 0)
+Initial-Log "Console handle: $global:ConsoleHandle"
+if ($global:ConsoleHandle -ne 0) {
+    # SW_HIDE = 0. Out-Null ile bool return suppres edilir (PS2EXE Console mode'da terminal'e
+    # "True" yazmasin diye). PS2EXE -NoConsole'siz compile edildigi icin terminal acilir,
+    # bu cagri pencereyi anlik (~milisaniye) gizler.
+    $hideOk = [NativeMethods]::ShowWindow($global:ConsoleHandle, 0)
+    Initial-Log "ShowWindow(SW_HIDE) returned: $hideOk (true=daha once goruluyordu, false=zaten gizliydi)"
+}
 
 # --- YARDIMCI FONKSİYONLAR ---
 
@@ -377,7 +408,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.0.6"
+$global:AppVersion = "1.0.7"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -13576,12 +13607,12 @@ $btnRun.Add_Click({
     $btnAnalyze.IsEnabled = $true
 })
 
-# Debug Checkbox
-if ($chkDebug) { 
-    $chkDebug.Add_Click({ 
-        if ($chkDebug.IsChecked) { [NativeMethods]::ShowWindow($global:ConsoleHandle, 5) } 
-        else { [NativeMethods]::ShowWindow($global:ConsoleHandle, 0) } 
-    }) 
+# Debug Checkbox — Console penceresi göster/gizle (Out-Null: bool return suppression)
+if ($chkDebug) {
+    $chkDebug.Add_Click({
+        if ($chkDebug.IsChecked) { [NativeMethods]::ShowWindow($global:ConsoleHandle, 5) | Out-Null }
+        else                     { [NativeMethods]::ShowWindow($global:ConsoleHandle, 0) | Out-Null }
+    })
 }
 
 # --- GÜVENLİ KAPANIŞ VE BELLEK TEMİZLİĞİ (V2 - POOL DESTEKLİ) ---
