@@ -204,7 +204,8 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
     exit
 }
 
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+# PS2EXE -NoConsole modunda Console nesnesi olmaz — try/catch ile sarmal
+try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
 # --- GLOBAL RUNSPACE POOL (HIZ VE VERİMLİLİK İÇİN) ---
 if (-not $global:GeminiPool) {
@@ -283,7 +284,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.0.0"
+$global:AppVersion = "1.0.1"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -4508,19 +4509,40 @@ function Compare-Version {
 
 # Acilis sirasinda once .old dosyalari sil. Updater script ana dosyalari rename ederek update'liyor,
 # program tekrar acildiginda artik kullanilmayan .old uzantili dosyalari temizler. Updater PS1'i de siler.
+function Get-AppExeDirectory {
+    # Hem PS1 modunda ($PSScriptRoot), hem PS2EXE -NoConsole modunda calisir.
+    # PS2EXE'de $PSScriptRoot null olabilir, MainModule.FileName ile gercek EXE yolunu aliriz.
+    $appDir = $null
+    try {
+        if ($PSScriptRoot -and (Test-Path $PSScriptRoot)) {
+            $appDir = $PSScriptRoot
+        } else {
+            $exePath = [System.Diagnostics.Process]::GetCurrentProcess().MainModule.FileName
+            if ($exePath -and (Test-Path $exePath)) {
+                $appDir = Split-Path -Parent $exePath
+            }
+        }
+    } catch {}
+    if (-not $appDir -or -not (Test-Path $appDir)) {
+        try { $appDir = (Get-Location).Path } catch { $appDir = $null }
+    }
+    return $appDir
+}
+
 function Cleanup-OldUpdateFiles {
     try {
-        # Ana program dosyalarinin oldugu klasor (PS1 olarak calisirken $PSScriptRoot, EXE olarak calisirken script konumu)
-        $appDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent ([Environment]::GetCommandLineArgs()[0]) }
+        $appDir = Get-AppExeDirectory
         if ($appDir -and (Test-Path $appDir)) {
             Get-ChildItem -Path $appDir -Filter "*.old" -ErrorAction SilentlyContinue | ForEach-Object {
                 Remove-Item $_.FullName -Force -ErrorAction SilentlyContinue
             }
         }
         # Eski updater PS1 ve staging klasoru
-        $updaterPath = "$AppDataPath\update_runner.ps1"
-        if (Test-Path $updaterPath) { Remove-Item $updaterPath -Force -ErrorAction SilentlyContinue }
-        if ((Test-Path $global:UpdateStagingDir)) {
+        if ($AppDataPath) {
+            $updaterPath = Join-Path $AppDataPath "update_runner.ps1"
+            if (Test-Path $updaterPath) { Remove-Item $updaterPath -Force -ErrorAction SilentlyContinue }
+        }
+        if ($global:UpdateStagingDir -and (Test-Path $global:UpdateStagingDir)) {
             Remove-Item $global:UpdateStagingDir -Recurse -Force -ErrorAction SilentlyContinue
         }
     } catch {
@@ -4767,9 +4789,10 @@ function Invoke-AppUpdate {
 
     # 4. Mevcut process bilgilerini topla
     $myPid = $PID
-    $appDir = if ($PSScriptRoot) { $PSScriptRoot } else { Split-Path -Parent ([Environment]::GetCommandLineArgs()[0]) }
-    if (-not $appDir -or -not (Test-Path $appDir)) {
-        $appDir = (Get-Location).Path
+    $appDir = Get-AppExeDirectory
+    if (-not $appDir) {
+        & $ProgressCallback 100 "HATA: Uygulama klasoru tespit edilemedi"
+        return $false
     }
 
     # Yeniden baslatilacak EXE'yi bul (oncelik: TemizlikAsistani.exe)
