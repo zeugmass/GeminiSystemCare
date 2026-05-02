@@ -64,18 +64,29 @@ jobs:
           # override'lari bypass ediyor. -NoConsole'siz konsol penceresi acilir ama
           # MessageBox spam'i kalkmasi gerekiyor. Stable surumde Win32 API ile
           # konsol penceresini gizleyecegiz (ShowWindow SW_HIDE).
-          Invoke-PS2EXE `
-            -InputFile "TemizlikAsistani.ps1" `
-            -OutputFile "TemizlikAsistani.exe" `
-            -Title "Gemini Sistem Bakim Araci" `
-            -Description "Windows icin kapsamli sistem bakim, optimizasyon ve tweak araci" `
-            -Company "GeminiCare" `
-            -Product "Gemini System Care" `
-            -Copyright "(c) 2026" `
-            -Version $version `
-            -RequireAdmin `
-            -Sta `
-            -Verbose
+          $iconArg = if (Test-Path "mrclean.ico") { "mrclean.ico" } else { $null }
+          if ($iconArg) {
+            Write-Host "Icon file: $iconArg"
+          } else {
+            Write-Host "No icon file found"
+          }
+
+          $ps2exeArgs = @{
+            InputFile    = "TemizlikAsistani.ps1"
+            OutputFile   = "TemizlikAsistani.exe"
+            Title        = "Gemini Sistem Bakim Araci"
+            Description  = "Windows icin kapsamli sistem bakim, optimizasyon ve tweak araci"
+            Company      = "GeminiCare"
+            Product      = "Gemini System Care"
+            Copyright    = "(c) 2026"
+            Version      = $version
+            RequireAdmin = $true
+            Sta          = $true
+            Verbose      = $true
+          }
+          if ($iconArg) { $ps2exeArgs.IconFile = $iconArg }
+
+          Invoke-PS2EXE @ps2exeArgs
 
           if (-not (Test-Path "TemizlikAsistani.exe")) {
             Write-Host "::error::EXE not created"
