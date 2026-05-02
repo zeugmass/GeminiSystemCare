@@ -347,7 +347,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.1.0"
+$global:AppVersion = "1.1.1"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -5249,8 +5249,48 @@ function Invoke-RestorePointAsync {
 # --- TWEAK MANTIK ---
 # powercfg sonucunu cache'le (her Check-Tweak-Status / Apply-System-Tweaks öncesi yenilenir)
 $script:PowerCfgActiveScheme = $null
+# Hidden external command runner — terminal flash olmadan native exe cagirir.
+# PS2EXE Console mode'da `& cmd /c ...` veya `netsh ...` direkt cagrilirsa kisa sureli console
+# pencere acilir. ProcessStartInfo + CreateNoWindow ile bu engellenir.
+function Invoke-HiddenCommand {
+    param([Parameter(Mandatory=$true)][string]$FilePath, [string]$Arguments = "")
+    try {
+        $psi = New-Object System.Diagnostics.ProcessStartInfo
+        $psi.FileName               = $FilePath
+        $psi.Arguments              = $Arguments
+        $psi.UseShellExecute        = $false
+        $psi.CreateNoWindow         = $true
+        $psi.WindowStyle            = 'Hidden'
+        $psi.RedirectStandardOutput = $true
+        $psi.RedirectStandardError  = $true
+        $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+        $proc = [System.Diagnostics.Process]::Start($psi)
+        $stdout = $proc.StandardOutput.ReadToEnd()
+        $null = $proc.StandardError.ReadToEnd()
+        $proc.WaitForExit()
+        return $stdout
+    } catch {
+        return ""
+    }
+}
+
+# Cache'ler: Check-Tweak-Status icindeki tarama 60+ tweak icin tetikleniyor. Her tweak'te
+# bcdedit/netsh/powercfg cagrilirsa 60+ child process spawn olur (ve console flash). Bunlar
+# uygulama acilmasi suresince sabit, yarin cache'le, tum tweak'ler ayni cache'ten okusun.
+$script:PowerCfgActiveScheme = ""
+$script:BcdEditEnumOutput    = ""
+$script:NetshTcpGlobalOutput = ""
+
 function Refresh-PowerCfg-Cache {
-    try { $script:PowerCfgActiveScheme = powercfg /getactivescheme 2>$null } catch { $script:PowerCfgActiveScheme = "" }
+    $script:PowerCfgActiveScheme = Invoke-HiddenCommand "powercfg.exe" "/getactivescheme"
+}
+
+function Refresh-BcdEdit-Cache {
+    $script:BcdEditEnumOutput = Invoke-HiddenCommand "bcdedit.exe" "/enum"
+}
+
+function Refresh-NetshTcp-Cache {
+    $script:NetshTcpGlobalOutput = Invoke-HiddenCommand "netsh.exe" "int tcp show global"
 }
 
 function Get-Tweak-IsActive($tweak) {
@@ -5284,9 +5324,12 @@ function Get-Tweak-IsActive($tweak) {
             $tcpWin   = (Get-ItemProperty -Path $pathTCP -Name "TcpWindowSize"            -ErrorAction SilentlyContinue).TcpWindowSize
             $throttle = (Get-ItemProperty -Path $pathMM  -Name "NetworkThrottlingIndex"   -ErrorAction SilentlyContinue).NetworkThrottlingIndex
 
-            # autotuninglevel değerini netsh'ten oku
-            $autoTuneLine = netsh int tcp show global | Select-String "Auto-Tuning"
-            $autoTuneVal  = if ($autoTuneLine) { $autoTuneLine.ToString().Split(":")[-1].Trim().ToLower() } else { "" }
+            # autotuninglevel değerini cache'ten oku (per-tweak external call yapma)
+            if (-not $script:NetshTcpGlobalOutput) { Refresh-NetshTcp-Cache }
+            $autoTuneVal = ""
+            if ($script:NetshTcpGlobalOutput -match "Auto-Tuning Level\s*:\s*(\S+)") {
+                $autoTuneVal = $Matches[1].Trim().ToLower()
+            }
 
             # [PROFİL] Düşük Gecikme + Tam Hız (Üniversal):
             # autotune=normal, throttle=0xFFFFFFFF, MinRto=300, TcpWindowSize SİLİNMİŞ (autotune halleder)
@@ -5327,9 +5370,10 @@ function Get-Tweak-IsActive($tweak) {
         # --- 2. KOMUT ve BATCH ÖZEL KONTROLLERİ ---
         elseif ($tweak.Command -or $tweak.Batch) { 
             
-            # A) BCDEDIT KONTROLLERİ
+            # A) BCDEDIT KONTROLLERİ — cache'ten oku, her tweak'te bcdedit cagirma
             if ($tweak.Command -match "bcdedit") {
-                $bcdOut = cmd /c bcdedit /enum 2>&1 | Out-String
+                if (-not $script:BcdEditEnumOutput) { Refresh-BcdEdit-Cache }
+                $bcdOut = $script:BcdEditEnumOutput
                 if ($tweak.Name -match "Dynamic Tick") {
                     if ($bcdOut -match "(?im)disabledynamictick\s+Yes") { return $true }
                 }
@@ -5699,7 +5743,10 @@ function Show-Privacy-Warning {
 }
 
 function Apply-System-Tweaks {
+    # Tum external command cache'lerini Hidden mode'da prime et (terminal flash yok)
     Refresh-PowerCfg-Cache
+    Refresh-BcdEdit-Cache
+    Refresh-NetshTcp-Cache
     $toEnable = New-Object System.Collections.ArrayList
     $toDisable = New-Object System.Collections.ArrayList
     
@@ -6692,7 +6739,11 @@ function Check-Tweak-Status {
         $script:TweakScanTimer.Stop()
     }
 
+    # Cache'leri PRIME et — 3 external command tek seferde (terminal flash olmadan).
+    # Tarama sirasinda tum tweak'ler bu cache'lerden okuyacak, her tweak icin ayri call yok.
     Refresh-PowerCfg-Cache
+    Refresh-BcdEdit-Cache
+    Refresh-NetshTcp-Cache
 
     if ($btnCheckTweaks) {
         $btnCheckTweaks.Content = "Denetleniyor..."
