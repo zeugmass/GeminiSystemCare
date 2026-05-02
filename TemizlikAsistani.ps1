@@ -207,6 +207,26 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 # PS2EXE -NoConsole modunda Console nesnesi olmaz — try/catch ile sarmal
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
+# PS2EXE -NoConsole modunda console yok — Write-Host'lar MessageBox'a donusur
+# Ana process'te console yoksa tum Write-Host'lari sessize al (runspace'ler etkilenmez)
+$script:HasConsole = $true
+try { $null = $Host.UI.RawUI.WindowSize.Width } catch { $script:HasConsole = $false }
+if (-not $script:HasConsole) {
+    # PS2EXE -NoConsole detected — Write-Host override (sadece ana process scope'unda)
+    function global:Write-Host {
+        param(
+            [Parameter(ValueFromPipeline=$true, Position=0)] $Object,
+            [Parameter(ValueFromRemainingArguments=$true)] $Rest
+        )
+        # Sessizce yut — console yok, gosterecek yer yok. Loglamak istersen WpfLog kullan.
+    }
+    # Out-Default'u da koru — implicit output'lari (pipeline'a dusen $true/$false vs.) yut
+    function global:Out-Default {
+        param([Parameter(ValueFromPipeline=$true)] $InputObject)
+        process { }
+    }
+}
+
 # --- GLOBAL RUNSPACE POOL (HIZ VE VERİMLİLİK İÇİN) ---
 if (-not $global:GeminiPool) {
     $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
@@ -284,7 +304,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.0.1"
+$global:AppVersion = "1.0.2"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -4154,6 +4174,7 @@ function Save-User-Config {
 
     # ATOMIC WRITE + AUTO-BACKUP
     # 1) JSON'u bellekte uret
+    # 1b) HASH CHECK: Yeni icerik mevcut config ile ozdes mi? (sadece _savedAt timestamp farkli olabilir)
     # 2) .tmp'ye yaz
     # 3) JSON parse et — bozuksa abort
     # 4) Eski yedekleri kaydir: bak4→bak5, bak3→bak4, ..., config→bak1
@@ -4161,6 +4182,26 @@ function Save-User-Config {
     try {
         $json = $config | ConvertTo-Json -Depth 10
         $tmpPath = "$UserConfigPath.tmp"
+
+        # 1b) HASH CHECK — gercek icerik ayni ise (sadece timestamp farkli) yazma!
+        # Bu sayede Mark-ConfigDirty cagrildiginda gercek bir degisiklik yoksa diske yazmaz,
+        # 5 seviyeli backup rotation gereksiz yere tetiklenmez (~190 KB x 5 file ops/save tasarrufu).
+        if (Test-Path $UserConfigPath) {
+            try {
+                $oldContent = Get-Content $UserConfigPath -Raw -ErrorAction Stop
+                # _savedAt'i normalize et — her save'de degisir, content compare icin disla
+                $stripPattern = '"_savedAt":\s*"[^"]*"'
+                $oldNorm = ($oldContent -replace $stripPattern, '"_savedAt":"X"').Trim()
+                $newNorm = ($json        -replace $stripPattern, '"_savedAt":"X"').Trim()
+                if ($oldNorm -eq $newNorm) {
+                    # Gercek degisiklik yok — flag'i temizle, yazma
+                    $global:ConfigDirty = $false
+                    return
+                }
+            } catch {
+                # Eski dosya bozuksa devam et, yine de yazalim
+            }
+        }
 
         # 1+2) Tmp dosyaya yaz
         Set-Content -Path $tmpPath -Value $json -Encoding UTF8 -ErrorAction Stop
@@ -7985,7 +8026,8 @@ function Refresh-Tools-Menu {
         $itmAppUpdate.FontWeight = "Bold"
     } else {
         $itmAppUpdate.Header = "🔄 Programı Güncelle (kontrol et)"
-        $itmAppUpdate.Foreground = [System.Windows.Media.Brushes]::LightGray
+        # Cyan tonu — tema ile uyumlu, MenuItem koyu arka planda net okunur
+        $itmAppUpdate.Foreground = [System.Windows.Media.SolidColorBrush]::new([System.Windows.Media.ColorConverter]::ConvertFromString("#4CC2FF"))
     }
     $itmAppUpdate.Add_Click({
         if ($global:UpdateAvailable) {
@@ -9594,10 +9636,10 @@ function Show-AppUpdateWindow {
                 <ColumnDefinition Width="8"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-            <Button Grid.Column="0" x:Name="btnAUSkip" Style="{StaticResource AUButton}" Content="🔇 Bu surumu atla" Background="#3A2A2A" Height="36" HorizontalAlignment="Left" Padding="14,0"/>
-            <Button Grid.Column="2" x:Name="btnAULater" Style="{StaticResource AUButton}" Content="💤 Daha sonra" Background="#3A3A3A" Height="36" Width="120"/>
-            <Button Grid.Column="4" x:Name="btnAUUpdate" Style="{StaticResource AUButton}" Content="📦 Guncelle" Background="#2E5E2E" Height="36" Width="170"/>
-            <Button Grid.Column="6" x:Name="btnAURelease" Style="{StaticResource AUButton}" Content="🌐" Background="#3A3A3A" Height="36" Width="40" ToolTip="Release sayfasini tarayicida ac"/>
+            <Button Grid.Column="0" x:Name="btnAUSkip" Style="{StaticResource AUButton}" Content="🔇  Bu sürümü atla" Background="#3A2A2A" Height="36" Width="180" HorizontalAlignment="Left"/>
+            <Button Grid.Column="2" x:Name="btnAULater" Style="{StaticResource AUButton}" Content="💤  Daha sonra" Background="#3A3A3A" Height="36" Width="140"/>
+            <Button Grid.Column="4" x:Name="btnAUUpdate" Style="{StaticResource AUButton}" Content="📦  Güncelle" Background="#2E5E2E" Height="36" Width="170"/>
+            <Button Grid.Column="6" x:Name="btnAURelease" Style="{StaticResource AUButton}" Content="🌐" Background="#3A3A3A" Height="36" Width="44" ToolTip="Release sayfasını tarayıcıda aç"/>
         </Grid>
     </Grid>
 </Window>
@@ -13833,39 +13875,52 @@ $ctxDeleteLargeFile.Add_Click({
 # --- OLAYLAR (EVENTS) ---
 # (SelectionChanged handler'ları yukarıda birleştirildi)
 
-$Win.Add_Loaded({ 
-    # 1. Önce Ayarları ve Veritabanını Yükle
-    # (Bu fonksiyonun içinde config dosyası okunur ve $global:AppLayout değeri gelir)
-    Start-Winapp2-Process
-	Load-DashboardData # Dashboard'u Yükle
-
-    # 2. Kayıtlı Görünüm Tercihini Uygula
-    if ($global:AppLayout -eq "Top") {
-        # Eğer Üst Menü seçildiyse yapıyı değiştir
-        $tabControl.TabStripPlacement = "Top"
-        
-        # Sekme boyutlarını otomatik (Auto) yap ve yüksekliği küçült
-        foreach ($tab in $tabControl.Items) { 
-            $tab.Width = [double]::NaN 
-            $tab.Height = 30 
+$Win.Add_Loaded({
+    # === DEBUG: tüm açılış adımlarını try/catch ile sarmal, hataları log'a yaz ===
+    # Boyle bir hata cikarsa MessageBox yerine WpfLog'da gorunur (PS2EXE NoConsole'da MessageBox spam onlenir)
+    function Invoke-InitStep {
+        param([string]$StepName, [scriptblock]$Action)
+        try {
+            & $Action
+            WpfLog "[INIT] ✓ $StepName"
+        } catch {
+            WpfLog "[INIT-ERR] ✗ ${StepName}: $($_.Exception.Message)"
+            WpfLog "[INIT-ERR]    StackTrace: $($_.ScriptStackTrace -split "`n" | Select-Object -First 3 | Out-String)"
         }
-    } else {
-        # Varsayılan zaten Sol (Left) olduğu için XAML stili geçerlidir.
-        $tabControl.TabStripPlacement = "Left"
     }
 
-    # 3. Diğer Listeleri Yükle
-    Load-Winget-Tree
-    Load-Tweak-Tree
-    Load-Repair-Tree
-	Refresh-Tools-Menu
+    WpfLog "═══ AÇILIŞ DEBUG LOG (v$($global:AppVersion)) ═══"
 
-    # 4. Auto-Update Altyapisi
-    # 4a. Onceki guncellemenin .old dosyalarini ve updater script'i temizle
-    Cleanup-OldUpdateFiles
-    # 4b. GitHub Releases API'yi async kontrol et — yeni surum varsa $global:UpdateAvailable doldurulur
-    #     ve status bar'da "🔔 Yeni surum: vX.Y.Z" notification cikar
-    Test-AppUpdate
+    # 1. Onceki dosyalardan kalan .old/staging temizligi (Auto-update icin)
+    Invoke-InitStep "Cleanup-OldUpdateFiles" { Cleanup-OldUpdateFiles }
+
+    # 2. Ayarlar ve Veritabani
+    Invoke-InitStep "Start-Winapp2-Process" { Start-Winapp2-Process }
+    Invoke-InitStep "Load-DashboardData"    { Load-DashboardData }
+
+    # 3. Layout tercihi
+    Invoke-InitStep "Layout uygula" {
+        if ($global:AppLayout -eq "Top") {
+            $tabControl.TabStripPlacement = "Top"
+            foreach ($tab in $tabControl.Items) {
+                $tab.Width = [double]::NaN
+                $tab.Height = 30
+            }
+        } else {
+            $tabControl.TabStripPlacement = "Left"
+        }
+    }
+
+    # 4. Listeler
+    Invoke-InitStep "Load-Winget-Tree"  { Load-Winget-Tree }
+    Invoke-InitStep "Load-Tweak-Tree"   { Load-Tweak-Tree }
+    Invoke-InitStep "Load-Repair-Tree"  { Load-Repair-Tree }
+    Invoke-InitStep "Refresh-Tools-Menu" { Refresh-Tools-Menu }
+
+    # 5. Auto-update kontrol (async)
+    Invoke-InitStep "Test-AppUpdate (async)" { Test-AppUpdate }
+
+    WpfLog "═══ AÇILIŞ TAMAMLANDI ═══"
 })
 $Win.ShowDialog() | Out-Null
 
