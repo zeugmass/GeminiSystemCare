@@ -207,24 +207,35 @@ if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Adm
 # PS2EXE -NoConsole modunda Console nesnesi olmaz — try/catch ile sarmal
 try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
 
-# PS2EXE -NoConsole modunda console yok — Write-Host'lar MessageBox'a donusur
-# Ana process'te console yoksa tum Write-Host'lari sessize al (runspace'ler etkilenmez)
+# PS2EXE -NoConsole modunda console yok — Write-* cagrilari MessageBox'a donusur
+# Ana process'te console yoksa tum Write/Out cagrilarini sessize al (runspace'ler etkilenmez)
 $script:HasConsole = $true
 try { $null = $Host.UI.RawUI.WindowSize.Width } catch { $script:HasConsole = $false }
 if (-not $script:HasConsole) {
-    # PS2EXE -NoConsole detected — Write-Host override (sadece ana process scope'unda)
+    # PS2EXE -NoConsole detected — output stream'lari sessize al (sadece ana process scope)
+    # Hata stream'leri MessageBox olarak cikiyordu; bu override hepsini yutar
     function global:Write-Host {
-        param(
-            [Parameter(ValueFromPipeline=$true, Position=0)] $Object,
-            [Parameter(ValueFromRemainingArguments=$true)] $Rest
-        )
-        # Sessizce yut — console yok, gosterecek yer yok. Loglamak istersen WpfLog kullan.
-    }
-    # Out-Default'u da koru — implicit output'lari (pipeline'a dusen $true/$false vs.) yut
-    function global:Out-Default {
-        param([Parameter(ValueFromPipeline=$true)] $InputObject)
+        param([Parameter(ValueFromPipeline=$true, Position=0)] $Object,
+              [Parameter(ValueFromRemainingArguments=$true)] $Rest)
         process { }
     }
+    function global:Out-Default {
+        param([Parameter(ValueFromPipeline=$true)] $InputObject,
+              [Parameter(ValueFromRemainingArguments=$true)] $Rest)
+        process { }
+    }
+    function global:Out-Host {
+        param([Parameter(ValueFromPipeline=$true)] $InputObject,
+              [Parameter(ValueFromRemainingArguments=$true)] $Rest)
+        process { }
+    }
+    # Implicit pipeline output (orn. fonksiyon return degeri) Out-Default'a gider — yukarida yutuluyor
+    # Stream preferences — silent default'lar (PS2EXE NoConsole'de stream MessageBox'a yonlenmesin)
+    $global:WarningPreference     = 'SilentlyContinue'
+    $global:VerbosePreference     = 'SilentlyContinue'
+    $global:DebugPreference       = 'SilentlyContinue'
+    $global:InformationPreference = 'SilentlyContinue'
+    # ErrorActionPreference Continue kalsın — hatalar Add_Loaded'daki try/catch'lerle yakalanir
 }
 
 # --- GLOBAL RUNSPACE POOL (HIZ VE VERİMLİLİK İÇİN) ---
@@ -252,8 +263,9 @@ $UserConfigPath = "$AppDataPath\user_config.json"
 $AppStatePath   = "$AppDataPath\app_state.json"
 $CachePath      = "$AppDataPath\app_cache.json"
 # Auto-update: kullanicinin atladigi surumler ve guncelleme staging klasoru
-$global:UpdateSkippedFile = "$AppDataPath\update_skipped_versions.txt"
-$global:UpdateStagingDir  = "$AppDataPath\update_staging"
+# PS2EXE-safe: $env:APPDATA kullaniyoruz, $AppDataPath script scope'a bagimli olmasin
+$global:UpdateSkippedFile = "$env:APPDATA\GeminiCare\update_skipped_versions.txt"
+$global:UpdateStagingDir  = "$env:APPDATA\GeminiCare\update_staging"
 
 # --- MEVCUT TANIMLAMALARIN ALTINA EKLE ---
 # =============================================================
@@ -304,7 +316,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.0.2"
+$global:AppVersion = "1.0.3"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/GeminiSystemCare"
@@ -4601,7 +4613,8 @@ function Test-AppUpdate {
 
     # Atlanan surumler dosyasini oku — kullanici "Bu surumu atla" demisse listede vardir
     $skipped = @()
-    if (Test-Path $global:UpdateSkippedFile) {
+    # Defansif null check — PS2EXE'de bazen $global:UpdateSkippedFile init sirasinda null kalabilir
+    if ($global:UpdateSkippedFile -and (Test-Path $global:UpdateSkippedFile)) {
         try { $skipped = Get-Content $global:UpdateSkippedFile -ErrorAction SilentlyContinue } catch {}
     }
 
