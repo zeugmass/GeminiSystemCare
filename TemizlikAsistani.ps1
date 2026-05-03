@@ -9,19 +9,19 @@
 # ║  allocate edip flash veriyor. Hidden console attached kalırsa child'lar     ║
 # ║  inherit eder → flash yok.                                                  ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
-try {
-    Add-Type -Name 'EarlyHide' -Namespace 'Win32' -MemberDefinition @'
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
-        public static extern System.IntPtr GetConsoleWindow();
-        [System.Runtime.InteropServices.DllImport("user32.dll")]
-        public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
-'@ -ErrorAction Stop
-    $earlyHandle = [Win32.EarlyHide]::GetConsoleWindow()
-    if ($earlyHandle -ne [IntPtr]::Zero) {
-        # SW_HIDE = 0. Console attached kalir (child process'ler inherit eder).
-        [void][Win32.EarlyHide]::ShowWindow($earlyHandle, 0)
-    }
-} catch {}
+# PS2EXE -NoConsole modu: pipeline output (orn. $true/$false) Out-Default uzerinden
+# MessageBox'a yonlendiriliyor, "False" spam veriyor. Out-Default'u no-op yaparak
+# tum default output'u susturuyoruz (GUI app oldugu icin console output zaten anlamsiz).
+function global:Out-Default {
+    [CmdletBinding()]
+    param([Parameter(ValueFromPipeline=$true)] $InputObject)
+    process { }
+}
+
+# Yedek: Write-* cmdlet'lerini de no-op yap (defansif).
+foreach ($_w in 'Host','Output','Verbose','Information','Debug') {
+    Set-Item -Path "function:global:Write-$_w" -Value { param([Parameter(ValueFromPipeline=$true)] $i) process { } } -Force -ErrorAction SilentlyContinue
+}
 
 # DOSYA YAPISI (ICINDEKILER)
 # -----------------------------------------------------------------------------
@@ -200,7 +200,7 @@ Add-Type -TypeDefinition $nativeCode -Language CSharp
 # Early FreeConsole zaten ana pencereyi detach eder; bu fallback baska durumlar icin.
 $global:ConsoleHandle = [NativeMethods]::GetConsoleWindow()
 if ($global:ConsoleHandle -ne 0) {
-    [void][NativeMethods]::ShowWindow($global:ConsoleHandle, 0)  # SW_HIDE = 0
+    [void][NativeMethods]::ShowWindow($global:ConsoleHandle, 0)  # SW_HIDE = 0 (defansif; -NoConsole aktif olunca handle 0 olur)
 }
 
 # --- YARDIMCI FONKSİYONLAR ---
@@ -354,7 +354,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.2.1"
+$global:AppVersion = "1.2.2"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/MrClean"
@@ -582,46 +582,22 @@ function Get-Default-Tweaks {
         )
 		# --- 2. GÖREV ÇUBUĞU VE BAŞLAT ---
         "Kişiselleştirme" = @(
-             # WINDOWS SPOTLIGHT
-            @{ 
-                Name="Windows Spotlight Kapat (Düz Renk/Resim)";
-				SubCategory="Arka Plan";
-                Command='
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 1 -Type DWord -Force;
-                    $ds = "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings"
-                    if (-not (Test-Path $ds)) { New-Item -Path $ds -Force | Out-Null }
-                    Set-ItemProperty -Path $ds -Name "EnabledState" -Value 0 -Type DWord -Force;
-                    Set-ItemProperty -Path $ds -Name "SpotlightDisabledReason" -Value 100 -Type DWord -Force;
-                    Refresh-Wallpaper; Refresh-WindowsTheme
-                ';
-                UndoCommand='
-                    $ds = "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings"
-					Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 3 -Type DWord -Force;
-					Set-ItemProperty -Path $ds -Name "SpotlightDisabledReason" -Value 100 -Type DWord -Force;
-                    Set-ItemProperty -Path $ds -Name "EnabledState" -Value 1 -Type DWord -Force;
-                    $rootDS = "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight"
-                    Set-ItemProperty -Path $rootDS -Name "ImagesUsed" -Value 2 -Type DWord -Force;
-                    $creat = "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Creatives"
-                    if (-not (Test-Path $creat)) { New-Item -Path $creat -Force | Out-Null }
-                    Set-ItemProperty -Path $creat -Name "ImageIndex" -Value 1 -Type DWord -Force;
-                    if (Get-Service "AppXSvc" -ErrorAction SilentlyContinue) { Restart-Service "AppXSvc" -Force -ErrorAction SilentlyContinue }
-                    Refresh-Wallpaper; Refresh-WindowsTheme
-                ';
-                RestartExplorer=$false 
-            },
+            # NOT: "Windows Spotlight Kapat" tweak'i Karanlik Mod tweak'ine entegre edildi (v1.2.2).
+            # Karanlik Mod uygulandiginda Spotlight otomatik kapanir, BackgroundType=1 (renk modu, siyah) yapilir.
+
 			@{ Name="Kilit Ekranında Eğlenceli Bilgileri Kapat"; SubCategory="Arka Plan"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\ContentDeliveryManager"; ValueName="RotatingLockScreenEnabled"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
 			
 			# KARANLIK MOD — TAM PAKET (FR33THY 5 Theme Black.ps1 + 6 Signout Lockscreen Wallpaper Black.ps1 BIRLESTIRILMIS)
             @{
                 Name="Karanlık Modu Aç (Sistem + Wallpaper + Kilit Ekranı)";
 				SubCategory="Renkler";
-                Description="Komple koyu tema paketi — FR33THY 2 scriptin birlesimi. Tek tikla:`n`n• Sistem & uygulamalar koyu tema (AppsUseLightTheme=0, SystemUsesLightTheme=0)`n• Saydamlik kapali (EnableTransparency=0)`n• Renkli baslik cubuklari (ColorPrevalence=1)`n• DWM accent rengi siyah (0xff191919) — pencere kenarlari, taskbar`n• Accent palette gri tonlari (Win11 'Renkler' bolumunde gorunur)`n• Klasik kontrol paneli arka plani siyah`n• Masaustu duvar kagidi: ekran cozunurlugunde siyah JPG (C:\\Windows\\Black.jpg)`n• Kilit ekrani arka plani: ayni siyah JPG (Spotlight kapanir)`n`nTum 'siyah' yuzeyleri tek tweak ile yonetir.";
+                Description="Komple koyu tema paketi — FR33THY 2 scriptin birlesimi + Spotlight kapatma. Tek tikla:`n`n• Sistem & uygulamalar koyu tema (AppsUseLightTheme=0, SystemUsesLightTheme=0)`n• Saydamlik kapali (EnableTransparency=0)`n• Renksiz baslik cubuklari (ColorPrevalence=0)`n• DWM accent rengi siyah (0xff191919) — pencere kenarlari, taskbar`n• Accent palette gri tonlari (Win11 'Renkler' bolumunde gorunur)`n• Klasik kontrol paneli arka plani siyah`n• Masaustu: Spotlight kapatilir, BackgroundType=1 (duz renk modu) -> tam siyah arka plan`n• Kilit ekrani: ekran cozunurlugunde siyah JPG (C:\\Windows\\Black.jpg)`n`nTum 'siyah' yuzeyleri ve Windows Spotlight'i tek tweak ile yonetir.";
                 RestartExplorer=$false;
                 Command='
                     # === BOLUM 1: SISTEM TEMASI ===
-                    # Personalize: Apps + System koyu, ColorPrevalence (renkli baslik cubuklari), saydamlik off
+                    # Personalize: Apps + System koyu, ColorPrevalence=0 (renksiz baslik cubuklari -- kullanici istegi v1.2.2), saydamlik off
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme"     -Value 0 -Type DWord -Force
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "ColorPrevalence"      -Value 1 -Type DWord -Force
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "ColorPrevalence"      -Value 0 -Type DWord -Force
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "EnableTransparency"   -Value 0 -Type DWord -Force
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Value 0 -Type DWord -Force
 
@@ -671,17 +647,33 @@ function Get-Default-Tweaks {
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImagePath"   -Value $file -Type String -Force
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImageStatus" -Value 1     -Type DWord  -Force
 
-                    # Masaustu duvar kagidi
-                    Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value $file -Type String -Force
-                    rundll32.exe user32.dll, UpdatePerUserSystemParameters
+                    # === BOLUM 3: MASAUSTU = DUZ RENK SIYAH + SPOTLIGHT KAPAT (kullanici istegi v1.2.2) ===
+                    # BackgroundType=1 -> duz renk modu. Renk Control Panel\Colors\Background="0 0 0" zaten siyah.
+                    # Kilit ekrani Black.jpg kullanir; masaustu wallpaper renk modu oldugu icin set edilmiyor.
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Force -ErrorAction SilentlyContinue | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Force -ErrorAction SilentlyContinue | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Name "EnabledState" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Name "SpotlightDisabledReason" -Value 100 -Type DWord -Force -ErrorAction SilentlyContinue
 
+                    # KRITIK: Win11 Wallpaper string i dolu ise BgType=1 ignore edilir, resim modu zorlanir.
+                    # Wallpaper registry yi BOSALT + SPI_SETDESKWALLPAPER bos string ile broadcast (Windows wallpaper i kaldirir).
+                    Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Type String -Force
+                    # SPI_SETDESKWALLPAPER=20, bos string, SPIF_UPDATEINIFILE|SPIF_SENDCHANGE=3 -> Windows wallpaper i kaldirir, duz renk modu aktif
+                    [NativeMethods]::SystemParametersInfo(20, 0, "", 3) | Out-Null
+
+                    rundll32.exe user32.dll, UpdatePerUserSystemParameters
                     Refresh-WindowsTheme
                     Write-Host "[Karanlik] Tum siyah yuzeyler uygulandi."
                 ';
                 UndoCommand='
                     # === BOLUM 1: SISTEM TEMASI -> Light defaults ===
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme"     -Value 1 -Type DWord -Force
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "ColorPrevalence"      -Value 0 -Type DWord -Force
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "ColorPrevalence"      -Value 0 -Type DWord -Force  # Light default
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "EnableTransparency"   -Value 1 -Type DWord -Force
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "SystemUsesLightTheme" -Value 1 -Type DWord -Force
 
@@ -708,6 +700,21 @@ function Get-Default-Tweaks {
                     # === BOLUM 2: WALLPAPER + KILIT EKRANI -> defaults ===
                     Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Recurse -Force -ErrorAction SilentlyContinue
                     Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value "C:\Windows\Web\Wallpaper\Windows\img0.jpg" -Type String -Force -ErrorAction SilentlyContinue
+
+                    # === BOLUM 3: SPOTLIGHT TAM RESTORE (Karanlik Mod kapatti) ===
+                    # Eski Spotlight Kapat tweak Undo komutu ile birebir — eksik adim Spotlight gercekten geri acilmaz.
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 3 -Type DWord -Force -ErrorAction SilentlyContinue
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Name "EnabledState" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight" -Name "ImagesUsed" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+                    if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Creatives")) {
+                        New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Creatives" -Force -ErrorAction SilentlyContinue | Out-Null
+                    }
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Creatives" -Name "ImageIndex" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                    # AppXSvc restart — Spotlight servisinin yeni ayarlari yuklemesi icin gerekli
+                    if (Get-Service "AppXSvc" -ErrorAction SilentlyContinue) {
+                        Restart-Service "AppXSvc" -Force -ErrorAction SilentlyContinue
+                    }
+
                     rundll32.exe user32.dll, UpdatePerUserSystemParameters
                     Remove-Item -Path "C:\Windows\Black.jpg" -Force -ErrorAction SilentlyContinue
 
@@ -829,20 +836,19 @@ function Get-Default-Tweaks {
 				Name="Başlat Menüsü: Format Sonrası Temiz Düzen (FR33THY)";
 				SubCategory="Başlat";
 				Risk="Medium";
-				RestartExplorer="Hard";
-				Description="Format sonrasi tek tikla temiz Baslat menusu — FR33THY birebir kompozit. Uc isi tek seferde yapar:`n`n1) **Liste Gorunumu** — Tum Uygulamalar bolumunu kategoriden duz listeye cevirir (AllAppsViewMode=2)`n2) **Yeni Start Menu Duzeni** — Win11 22H2+ 'Daha Fazla Sabitleme/Oneri' duzeni (4 FeatureManagement Override 14 key)`n3) **Layout Import** — Win10 icin bos LayoutModificationTemplate XML, Win11 icin FR33THY'nin clean start2.bin dosyasi`n`n⚠️ DIKKAT: Mevcut sabit kayitlariniz (pinned tiles) silinir. Sifirdan baslamak icin uygundur.`n⚠️ Explorer 5 sn icinde 2 kez restart olur (Win10 layout flow gerekli).";
+				RestartExplorer=$false;
+				Description="Format sonrasi tek tikla temiz Baslat menusu — FR33THY birebir kompozit. Uc isi tek seferde yapar:`n`n1) **Liste Gorunumu** — Tum Uygulamalar bolumunu kategoriden duz listeye cevirir (AllAppsViewMode=2)`n2) **Yeni Start Menu Duzeni** — Win11 22H2+ 'Daha Fazla Sabitleme/Oneri' duzeni (4 FeatureManagement Override 14 key)`n3) **Layout Import** — Win10 icin bos LayoutModificationTemplate XML, Win11 icin FR33THY'nin clean start2.bin dosyasi`n`n⚠️ DIKKAT: Mevcut sabit kayitlariniz (pinned tiles) silinir. Sifirdan baslamak icin uygundur.`n⚠️ Apply sirasinda Invoke-StartMenuLayoutImport helper Explorer'i 1 kez otomatik restart eder (Win10 layout flow gerekli).";
 				DetectScript='
 					# Aktif sayilma kriteri: tum bilesenler uygulanmis olmali
-					# 1) start2.bin dosyasi var (Win11) VEYA Win10 ise bu kontrol atlanir
-					# 2) AllAppsViewMode = 2
-					# 3) En az bir FeatureManagement Override 14 key uygulanmis (EnabledState=2)
+					# 1) AllAppsViewMode = 2 (List view)
+					# 2) En az bir FeatureManagement Override 14 key uygulanmis (EnabledState=2)
+					# 3) Win11 ise start2.bin var (Win10 LocalState yoksa atla)
 					$avm = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start" -Name "AllAppsViewMode" -ErrorAction SilentlyContinue).AllAppsViewMode
 					if ("$avm" -ne "2") { return $false }
 
 					$fm = (Get-ItemProperty -Path "HKLM:\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\14\2792562829" -Name "EnabledState" -ErrorAction SilentlyContinue).EnabledState
 					if ("$fm" -ne "2") { return $false }
 
-					# Win11 ise start2.bin de olmali; Win10 ise (LocalState klasoru yok) bu kontrolu atla
 					$localState = "$env:USERPROFILE\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState"
 					if (Test-Path $localState) {
 						$start2 = "$localState\start2.bin"
@@ -5454,10 +5460,7 @@ function Get-Tweak-IsActive($tweak) {
                 if ("$val" -eq "0") { return $true }
             }
 			
-            if ($tweak.Name -match "Spotlight") {
-                $bgType = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -ErrorAction SilentlyContinue).BackgroundType
-                if ($bgType -ne 3 -and $bgType -ne $null) { return $true }
-            }
+            # NOT: Spotlight tweak'i Karanlik Mod'a entegre edildi (v1.2.2). Status check kaldirildi.
 
             if ($tweak.Command -match "Set-DnsClientServerAddress") {
                 $activeAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
@@ -7628,7 +7631,12 @@ function Start-Worker-Process($ScriptContent, $activeBtn, $type, $TimeoutSeconds
     $wrapper = @"
     param(`$Q)
     `$ErrorActionPreference = 'Continue'
-    [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+
+    # PS2EXE -NoConsole modunda [Console] nesnesi olmaz -- exception handle et.
+    # Native exe pipe encoding icin `$OutputEncoding` (PowerShell-level) kritik.
+    try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+    try { `$OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+    try { [Console]::InputEncoding  = [System.Text.Encoding]::UTF8 } catch {}
 
     # Tüm Log ve Status mesajlarını doğrudan RAM'deki bu ortak kuyruğa fırlatıyoruz!
     function WS(`$msg) { `$Q.Enqueue(`"[[STATUS]]:`$msg`") }
@@ -7746,37 +7754,33 @@ function Start-Worker-Process($ScriptContent, $activeBtn, $type, $TimeoutSeconds
 }
 
 function Refresh-Winget-Status {
+    # NOT (v1.2.2): async refactor (DispatcherTimer + runspace pool) denendi ama detected list bos donuyordu
+    # (muhtemelen runspace'e hashtable geçişi veya WingetApps scope sorunu). Sync versiyona geri dönüldü.
+    # UI 3-5 sn donar (Do-Events ile yumuşatılır) ama çalışıyor. Async iyileştirmesi v1.2.3'e bırakıldı.
     param([bool]$Silent = $false)
-    
-    # Global değişken zaten mevcut, tekrar FindName gerekmez
+
     if ($btnRefreshWinget) { $btnRefreshWinget.IsEnabled = $false; $btnRefreshWinget.Content = "Taranıyor..." }
     Do-Events
-    
+
     try {
         $installedOutput = & winget list --disable-interactivity 2>&1 | Out-String
         $detectedIDs = @()
-        
+
         foreach ($appName in $global:WingetApps.Keys) {
             $wingetID = $global:WingetApps[$appName]
-            
-            # DÜZELTME: Hem Winget ID'sini hem de Uygulama Adını güvenli formata çevir
-            $safeID = [regex]::Escape($wingetID)
+            $safeID   = [regex]::Escape($wingetID)
             $safeName = [regex]::Escape($appName)
-            
-            # 1. Tam Winget ID'si eşleşiyor mu? (Örn: Discord.Discord)
-            # 2. VEYA Uygulama listesinde Adı direkt geçiyor mu? (Örn: Discord)
             if ($installedOutput -match "(?i)$safeID" -or $installedOutput -match "(?im)^$safeName\s+") {
                 $detectedIDs += $wingetID
             }
         }
-        
+
         Update-Cache -Type "Winget" -Data $detectedIDs
         Load-Winget-Tree -MemoryList $detectedIDs
-        
+
         if (-not $Silent) { [System.Windows.MessageBox]::Show("Tarama tamamlandı.", "Bilgi") | Out-Null }
-        
     } catch { WpfLog "Hata: $_" }
-    
+
     if ($btnRefreshWinget) { $btnRefreshWinget.Content = "♻ Denetle"; $btnRefreshWinget.IsEnabled = $true }
 }
 
@@ -12810,8 +12814,10 @@ $btnInstallWinget.Add_Click({
     function Process-Output(`$line) {
         `$clean = `$line.ToString().Trim()
         if (-not[string]::IsNullOrWhiteSpace(`$clean)) {
-            # Progress barlarını ve anlamsız KB/MB yazılarını gizle
-            if (`$clean -match '^[█▒\|\/\\\-\s\d\.]+(KB|MB|%)*') { return }
+            # Progress bar satirlari (encoding ne olursa olsun "X KB / Y MB" pattern'i yakalar)
+            if (`$clean -match '\d+(\.\d+)?\s*(KB|MB|GB)\s*\/\s*\d+(\.\d+)?\s*(KB|MB|GB)') { return }
+            # Saf progress char dolgu satirlari (UTF-8 dogru veya misencoded)
+            if (`$clean -match '^[█▒░â–ˆ|/\\\-\s\d\.]+$') { return }
             Log ">> `$clean"
         }
     }
@@ -12831,7 +12837,7 @@ $btnInstallWinget.Add_Click({
         $s += "`n    if (`$LASTEXITCODE -eq 0) { Log '✅ Kurulum Başarıyla Tamamlandı.' }"
         $s += "`n    else { Log '⚠️ Kurulum Hata ile Sonlandı (Kod: ' + `$LASTEXITCODE + ')' }"
         
-        $s += "`n    Start-Sleep -Seconds 1"
+        $s += "`n    Start-Sleep -Milliseconds 200"
     }
     
     $s += @"
@@ -12878,62 +12884,151 @@ $btnUninstallWinget.Add_Click({
     function Process-Output($line) {
         $clean = $line.ToString().Trim()
         if (-not[string]::IsNullOrWhiteSpace($clean)) {
-            if ($clean -match '^[█▒\|\/\\\-\s\d\.]+(KB|MB|%)*') { return }
+            # Progress bar satirlari (encoding ne olursa olsun "X KB / Y MB" pattern'i yakalar)
+            if ($clean -match '\d+(\.\d+)?\s*(KB|MB|GB)\s*\/\s*\d+(\.\d+)?\s*(KB|MB|GB)') { return }
+            # Saf progress char dolgu satirlari (UTF-8 dogru veya misencoded)
+            if ($clean -match '^[█▒░â–ˆ|/\\\-\s\d\.]+$') { return }
             Log ">> $clean"
         }
     }
 
     function Uninstall-FromRegistry($AppName) {
         Log "   [INFO] Registry taraması: $AppName"
-        $regPaths = @("HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*", "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*")
-        $found = $false
-        
-        foreach ($path in $regPaths) {
-            Get-ItemProperty $path -ErrorAction SilentlyContinue | ForEach-Object {
-                if ($found) { return }
-                if ($null -ne $_.DisplayName -and $_.DisplayName -match "(?i)$AppName" -and $null -ne $_.UninstallString) {
-                    $cmd = $_.UninstallString
-                    Log "   -> BULUNDU: $($_.DisplayName)"
-                    
-                    $exe = ""; $args = ""
-                    if ($cmd -match '^\"(.*?)\"(.*)') {
-                        $exe = $Matches[1]; $args = $Matches[2].Trim()
-                    } else {
-                        $split = $cmd.Split(' '); $exe = $split[0]
-                        if ($split.Count -gt 1) { $args = $cmd.Substring($exe.Length).Trim() }
-                    }
+        $regPaths = @(
+            "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
+            "HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        )
 
-                    # Parametreleri düzgün ayarla
-                    if ($exe -match "msiexec" -or $cmd -match "msiexec") {
-                        if ($args -notmatch "/q") { $args = "$args /qn /norestart" }
-                    } else {
-                        if ($args -notmatch "/VERYSILENT") {
-                            $args = "$args /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"
-                        }
-                    }
+        $allEntries = foreach ($path in $regPaths) {
+            Get-ItemProperty $path -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -and $_.UninstallString }
+        }
 
-                    Log "   -> Çalıştırılıyor: $exe $args"
-                    try {
-                        $psi = New-Object System.Diagnostics.ProcessStartInfo
-                        $psi.FileName               = $exe
-                        $psi.Arguments              = $args
-                        $psi.UseShellExecute        = $false
-                        $psi.CreateNoWindow         = $true
-                        $psi.WindowStyle            = [System.Diagnostics.ProcessWindowStyle]::Hidden
-                        $proc = [System.Diagnostics.Process]::Start($psi)
-                        $finished = $proc.WaitForExit(60000) # Max 60 saniye bekle
-                        if (-not $finished) {
-                            $proc.Kill()
-                            Log "   -> [UYARI] 60 saniye timeout - Görev sonlandırıldı."
-                        } else {
-                            Log "   ✅ [BAŞARILI] Registry ile kaldırıldı. (Exit: $($proc.ExitCode))"
-                        }
-                        $found = $true
-                    } catch { Log "   ❌ [HATA] $_" }
-                }
+        # Brand = AppName'in ilk kelimesi (genelde publisher/marka). Tum stratejilerin guvenlik kuralidir.
+        $allWords = @($AppName -split '\s+' | Where-Object { $_.Length -ge 2 })
+        $brand = if ($allWords.Count -gt 0) { $allWords[0] } else { $null }
+
+        $candidate = $null
+        # Strateji 1: tam match (case-insensitive)
+        $candidate = $allEntries | Where-Object { $_.DisplayName -match [regex]::Escape($AppName) } | Select-Object -First 1
+
+        # Strateji 2: TUM 4+ harfli kelimeler DisplayName'de gecsin (3 cok generic: "for","the")
+        if (-not $candidate) {
+            $longWords = @($allWords | Where-Object { $_.Length -ge 4 })
+            if ($longWords.Count -gt 0) {
+                $candidate = $allEntries | Where-Object {
+                    $name = $_.DisplayName; $allMatch = $true
+                    foreach ($w in $longWords) { if ($name -notmatch [regex]::Escape($w)) { $allMatch = $false; break } }
+                    $allMatch
+                } | Select-Object -First 1
             }
         }
-        if (-not $found) { Log "   ⚠️ [BİLGİ] Registry'de bulunamadı." }
+
+        # Strateji 3: brand DisplayName VEYA Publisher'da var (markalı match — DB Browser yanlislaması engelli)
+        if (-not $candidate -and $brand) {
+            $candidate = $allEntries | Where-Object {
+                ($_.DisplayName -match [regex]::Escape($brand)) -or
+                (($_.PSObject.Properties['Publisher']) -and $_.Publisher -and ($_.Publisher -match [regex]::Escape($brand)))
+            } | Select-Object -First 1
+        }
+
+        if (-not $candidate) {
+            Log "   ⚠️ [BİLGİ] Registry'de bulunamadı."
+            return $false
+        }
+
+        # FINAL GUVENLIK CHECK: bulunan candidate'in brand'i DisplayName VEYA Publisher'da OLMALI.
+        # Bu olmazsa "Yandex Browser" -> "DB Browser for SQLite" gibi yanlis match'leri engeller.
+        if ($brand) {
+            $brandInName = $candidate.DisplayName -match [regex]::Escape($brand)
+            $pubField    = ($candidate.PSObject.Properties['Publisher']) -and $candidate.Publisher
+            $brandInPub  = $pubField -and ($candidate.Publisher -match [regex]::Escape($brand))
+            if (-not ($brandInName -or $brandInPub)) {
+                Log "   ⚠️ [GÜVENLİK] '$($candidate.DisplayName)' (Publisher: $($candidate.Publisher)) brand '$brand' ile eslesmedi - reddedildi."
+                return $false
+            }
+        }
+
+        Log "   -> BULUNDU: $($candidate.DisplayName) (Publisher: $($candidate.Publisher))"
+        $cmd = $candidate.UninstallString
+        $exe = ""; $args = ""
+        if ($cmd -match '^\"(.*?)\"(.*)') {
+            $exe = $Matches[1]; $args = $Matches[2].Trim()
+        } else {
+            $split = $cmd.Split(' '); $exe = $split[0]
+            if ($split.Count -gt 1) { $args = $cmd.Substring($exe.Length).Trim() }
+        }
+
+        # Sessiz parametreler
+        if ($exe -match "msiexec" -or $cmd -match "msiexec") {
+            if ($args -notmatch "/q") { $args = "$args /qn /norestart" }
+        } else {
+            if ($args -notmatch "/VERYSILENT" -and $args -notmatch "/S\b" -and $args -notmatch "--uninstall") {
+                $args = "$args /VERYSILENT /SUPPRESSMSGBOXES /NORESTART"
+            }
+        }
+
+        Log "   -> Çalıştırılıyor: $exe $args"
+        try {
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName        = $exe
+            $psi.Arguments       = $args
+            $psi.UseShellExecute = $false
+            $psi.CreateNoWindow  = $true
+            $psi.WindowStyle     = [System.Diagnostics.ProcessWindowStyle]::Hidden
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $finished = $proc.WaitForExit(60000) # Max 60 sn
+            if (-not $finished) {
+                $proc.Kill()
+                Log "   -> [UYARI] 60 saniye timeout - Görev sonlandırıldı."
+                return $false
+            }
+            Log "   ✅ [BAŞARILI] Registry ile kaldırıldı. (Exit: $($proc.ExitCode))"
+            return $true
+        } catch {
+            Log "   ❌ [HATA] $_"
+            return $false
+        }
+    }
+
+    function Uninstall-FromPackageManager($AppName) {
+        Log "   [INFO] PackageManagement (Get-Package) taraması: $AppName"
+        try {
+            $allWords = @($AppName -split '\s+' | Where-Object { $_.Length -ge 2 })
+            $brand = if ($allWords.Count -gt 0) { $allWords[0] } else { $null }
+
+            $pkg = Get-Package -ErrorAction SilentlyContinue | Where-Object { $_.Name -match [regex]::Escape($AppName) } | Select-Object -First 1
+            # Bulunmadiysa kelime kelime dene (longest first) AMA her aday icin brand check zorunlu
+            if (-not $pkg) {
+                $longWords = @($allWords | Where-Object { $_.Length -ge 4 } | Sort-Object Length -Descending)
+                foreach ($w in $longWords) {
+                    $cand = Get-Package -ErrorAction SilentlyContinue | Where-Object { $_.Name -match [regex]::Escape($w) } | Select-Object -First 1
+                    if ($cand) {
+                        if ($brand -and ($cand.Name -notmatch [regex]::Escape($brand))) {
+                            Log "   ⚠️ [GÜVENLİK] '$($cand.Name)' '$brand' ile eslesmedi - atlandi."
+                            continue
+                        }
+                        $pkg = $cand; break
+                    }
+                }
+            }
+            if ($pkg) {
+                # Final brand check (Strateji 1 ile bulunduysa da)
+                if ($brand -and ($pkg.Name -notmatch [regex]::Escape($brand))) {
+                    Log "   ⚠️ [GÜVENLİK] '$($pkg.Name)' brand '$brand' ile eslesmedi - reddedildi."
+                    return $false
+                }
+                Log "   -> BULUNDU (Get-Package): $($pkg.Name)"
+                $pkg | Uninstall-Package -Force -ErrorAction Stop | Out-Null
+                Log "   ✅ [BAŞARILI] PackageManagement ile kaldırıldı."
+                return $true
+            }
+            Log "   ⚠️ [BİLGİ] Get-Package'da da bulunamadı."
+            return $false
+        } catch {
+            Log "   ❌ [HATA] PackageMgr: $($_.Exception.Message)"
+            return $false
+        }
     }
 
     function Remove-WinUtilAPPX($FullName) {
@@ -12974,18 +13069,22 @@ $btnUninstallWinget.Add_Click({
             
             if ($item.Type -eq "WINGET") {
                 & $w uninstall --id "$($item.ID)" -e --silent --accept-source-agreements --disable-interactivity 2>&1 | ForEach-Object { Process-Output $_ }
-                
-                if ($LASTEXITCODE -eq 0) { 
-                    Log "✅ [BAŞARILI] Winget ile kaldırıldı." 
-                } else { 
+
+                if ($LASTEXITCODE -eq 0) {
+                    Log "✅ [BAŞARILI] Winget ile kaldırıldı."
+                } else {
                     Log "⚠️ [UYARI] Winget kaldırılamadı. Kayıt Defteri (Registry) yöntemi deneniyor..."
-                    Uninstall-FromRegistry -AppName "$cleanSearchName"
+                    $regOk = Uninstall-FromRegistry -AppName "$cleanSearchName"
+                    if (-not $regOk) {
+                        Log "⚠️ [UYARI] Registry yetmedi. Windows PackageManagement deneniyor..."
+                        Uninstall-FromPackageManager -AppName "$cleanSearchName"
+                    }
                 }
             }
             elseif ($item.Type -eq "APPX") {
                 Remove-WinUtilAPPX -FullName "$($item.ID)"
             }
-            Start-Sleep -Milliseconds 500
+            Start-Sleep -Milliseconds 200
         }
         
         Log "----------------------------------------"

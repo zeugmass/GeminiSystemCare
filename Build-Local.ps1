@@ -134,6 +134,7 @@ $ps2exeArgs = @{
     Version      = $version
     RequireAdmin = $true
     Sta          = $true
+    NoConsole    = $true
 }
 if ($useIcon) { $ps2exeArgs.IconFile = $icoPath }
 

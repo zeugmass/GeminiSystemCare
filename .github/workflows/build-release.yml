@@ -78,11 +78,13 @@ jobs:
           $version = $tag -replace '^v',''
           Write-Host "Building version: $version"
 
-          # NOT: -NoConsole gecici olarak KALDIRILDI (v1.0.6 deney)
-          # PS2EXE -NoConsole modunda gizli "False" MessageBox sorunu PowerShell-level
-          # override'lari bypass ediyor. -NoConsole'siz konsol penceresi acilir ama
-          # MessageBox spam'i kalkmasi gerekiyor. Stable surumde Win32 API ile
-          # konsol penceresini gizleyecegiz (ShowWindow SW_HIDE).
+          # NOT (v1.2.2): -NoConsole flag'i GERI EKLENDI. Sebep:
+          # Windows 11 default terminal'i Windows Terminal'e gecti. PS2EXE Console mode'da
+          # binary baslatildiginda WindowsTerminal.exe ayri process'te spawn oluyor;
+          # ShowWindow SW_HIDE ile bizim PseudoConsoleWindow'u gizliyoruz ama gercek
+          # WindowsTerminal pencere ayri proceste, kullanici siyah pencere goruyor.
+          # -NoConsole = $true ile PS2EXE GUI mode'da baslar, WindowsTerminal hic invoke olmaz.
+          # "False" MessageBox spam sigortasi: PS1 basinda Out-Default + Write-* override.
           $iconArg = if (Test-Path "mrclean.ico") { "mrclean.ico" } else { $null }
           if ($iconArg) {
             Write-Host "Icon file: $iconArg"
@@ -101,6 +103,7 @@ jobs:
             Version      = $version
             RequireAdmin = $true
             Sta          = $true
+            NoConsole    = $true
             Verbose      = $true
           }
           if ($iconArg) { $ps2exeArgs.IconFile = $iconArg }
