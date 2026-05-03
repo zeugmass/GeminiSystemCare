@@ -531,22 +531,32 @@ Bir fonksiyon/özelliği değiştirmek için:
 
 **Çalışılan klasör:** `C:\Users\zeugmass\Desktop\TEST2\` (master), `C:\Users\zeugmass\Desktop\MrClean\` (git repo, yerel build/test) *(eski adı `GeminiSystemCare` — rebrand ile rename edildi)*
 
-**Mevcut sürüm:** `$global:AppVersion = "1.1.1"` — production-stable, debug instrumentation kaldırıldı
+**Mevcut sürüm:** `$global:AppVersion = "1.2.2"` — production-stable, GitHub'da yayında ([release](https://github.com/zeugmass/MrClean/releases/tag/v1.2.2)). Tüm ana akışlar kullanıcı tarafından test edildi.
 
 **GitHub repo:** `zeugmass/MrClean` (public)
 
-**Geliştirme akışı (v1.1.1+):**
+**Geliştirme akışı:**
 1. PS1'i edit et (TEST2 veya MrClean içinde)
-2. `cd C:\Users\zeugmass\Desktop\MrClean`
-3. `.\Build-Local.ps1 -Run` (yerel compile + test, ~25 sn)
-4. Sorunsuz çalışıyorsa: `git add` + `git commit` + `git tag -a vX.Y.Z` + `git push --tags`
-5. GitHub Actions otomatik release oluşturur (~3 dk), kullanıcılar update bildirimi alır
+2. **`$global:AppVersion`'u yeni tag ile MUTLAKA SENKRON TUT** ([TemizlikAsistani.ps1:357](TemizlikAsistani.ps1:357)) — aksi halde update loop oluşur
+3. `cd C:\Users\zeugmass\Desktop\MrClean`
+4. `.\Build-Local.ps1 -Run` (yerel compile + test, ~25 sn)
+5. Sorunsuz çalışıyorsa: `git add` + `git commit` + `git tag -a vX.Y.Z` + `git push --tags`
+6. GitHub Actions otomatik release oluşturur (~3 dk), kullanıcılar update bildirimi alır
 
-**Son user feedback:** v1.1.1 yerel build başarılı, EXE çalışıyor. **Push yapmadı henüz** — beklemede.
+**Bilinen iyileştirme borcu (kayıt):**
+- W1 — Refresh-Winget-Status async: v1.2.2'de denendi (DispatcherTimer + runspace pool), detected list boş döndü, sync revert edildi. Hashtable arg geçişi veya scope sorunu olduğu sanılıyor — doğru debug ile gelecek sprint'te düzeltilebilir. Şu an sync 3-5 sn UI donmuyor (`Do-Events` yumuşatıyor).
+- Karanlık Mod Undo'da Spotlight tam görünür olmayabilir: Win11 Wallpaper="img0.jpg" dolu olduğunda BgType otomatik 0'a düşüyor. Apply'daki "Wallpaper="" + SPI_SETDESKWALLPAPER" pattern'i Undo'da da uygulanabilir ileride.
+
+**v1.2.0 release durumu:** GitHub'da yayında ama bug'lı (PS1 v1.0.6 ile compile → loop). **Öneri:** GitHub UI'dan v1.2.0 + diğer eski release'leri sil/draft'a çek (v1.2.2 latest olarak kalır).
+
+**Son user feedback:** v1.2.2 yayında ve sorunsuz çalışıyor (2026-05-03). Auto-update loop yok, Winget kurulum/kaldırma güvenli, Karanlık Mod düz renk modunda.
 
 **Sıradaki adım (yeni pencerede):**
-- Eğer user v1.1.1'i test etti ve sorunsuz: commit + tag + push
-- Yeni özellik/fix istek varsa: TEST2'de değişiklik yap → Build-Local.ps1 ile test et → push
+- Yeni özellik/fix istek varsa: TEST2'de değişiklik yap → AppVersion bump (workflow check zorunlu) → Build-Local.ps1 ile test et → push
+- v1.2.0 release temizliği (manuel GitHub UI'dan)
+- W1 (Winget refresh async) ileride yeniden ele alınacak
+
+**⚠️ Apostrof kuralı (sentaks tuzağı — v1.2.2 sırasında 2 kez tökezleyildi):** Tek tırnaklı here-string'ler içinde (Command/UndoCommand/DetectScript) Türkçe apostrof (örn. `wallpaper'inde`, `tweak'in`) **yasak** — string'i kapatır, sentaks bozar. `''` ile escape edilebilir veya kullanılmamalı.
 
 **Repo dosyaları:**
 - `TemizlikAsistani.ps1` — ana script (~14K satır, 1 MB) — region 1-15 yapısı
