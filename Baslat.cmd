@@ -16,7 +16,7 @@ exit /b
 
 :ADMIN_OK
 setlocal
-title Gemini Sistem Bakim Araci
+title MrClean Sistem Bakim Araci
 
 REM ═══════════════════════════════════════════════════════
 REM  2. Dosya Varlik Kontrolu

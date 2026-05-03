@@ -1,11 +1,13 @@
 ﻿# =============================================================================
-# GEMINI SISTEM BAKIM ARACI (ULTIMATE V9.8)
+# MRCLEAN SISTEM BAKIM ARACI
 # =============================================================================
 
 # ╔═════════════════════════════════════════════════════════════════════════════╗
-# ║  EARLY CONSOLE DETACH (PS2EXE Console mode — siyah terminal acilir, biz     ║
-# ║  hemen detach ederiz). FreeConsole process'i mevcut console'dan tamamen     ║
-# ║  ayirir, pencere hemen kapanir. Buyuk Add-Type'tan once kucuk P/Invoke ile. ║
+# ║  EARLY CONSOLE HIDE (PS2EXE Console mode — siyah terminal acilir, biz       ║
+# ║  hemen gizleriz). FreeConsole çağırmıyoruz çünkü o zaman tweak Apply        ║
+# ║  sırasında native exe'ler (netsh/bcdedit/reg/sc) kendi console'larını       ║
+# ║  allocate edip flash veriyor. Hidden console attached kalırsa child'lar     ║
+# ║  inherit eder → flash yok.                                                  ║
 # ╚═════════════════════════════════════════════════════════════════════════════╝
 try {
     Add-Type -Name 'EarlyHide' -Namespace 'Win32' -MemberDefinition @'
@@ -13,21 +15,18 @@ try {
         public static extern System.IntPtr GetConsoleWindow();
         [System.Runtime.InteropServices.DllImport("user32.dll")]
         public static extern bool ShowWindow(System.IntPtr hWnd, int nCmdShow);
-        [System.Runtime.InteropServices.DllImport("kernel32.dll")]
-        public static extern bool FreeConsole();
 '@ -ErrorAction Stop
     $earlyHandle = [Win32.EarlyHide]::GetConsoleWindow()
     if ($earlyHandle -ne [IntPtr]::Zero) {
-        # Once gizle (anlik), sonra tamamen detach et — pencere kapanir
+        # SW_HIDE = 0. Console attached kalir (child process'ler inherit eder).
         [void][Win32.EarlyHide]::ShowWindow($earlyHandle, 0)
-        [void][Win32.EarlyHide]::FreeConsole()
     }
 } catch {}
 
 # DOSYA YAPISI (ICINDEKILER)
 # -----------------------------------------------------------------------------
 #   #region 01  C# INTEROP ............................. Native methods, SecureWiper, RamCleaner
-#   #region 02  YONETICI KONTROL, RUNSPACE POOL, TEMA ... Admin check, GeminiPool, theme/wallpaper
+#   #region 02  YONETICI KONTROL, RUNSPACE POOL, TEMA ... Admin check, MrCleanPool (runspace pool), theme/wallpaper
 #   #region 03  GLOBAL DEGISKENLER & DOSYA YOLLARI ...... AppData paths, $global:* flagleri
 #   #region 04  VARSAYILAN VERILER ...................... Get-Default-Tweaks, Winget DB, Repair tree
 #   #region 05  XAML TANIMLARI .......................... Ana pencere + 21 alt pencere heredoc
@@ -266,11 +265,11 @@ if ($script:IsPs2Exe) {
     # ErrorActionPreference Continue kalsın — hatalar Add_Loaded'daki try/catch'lerle yakalanir
 }
 # --- GLOBAL RUNSPACE POOL (HIZ VE VERİMLİLİK İÇİN) ---
-if (-not $global:GeminiPool) {
+if (-not $global:MrCleanPool) {
     $sessionState = [System.Management.Automation.Runspaces.InitialSessionState]::CreateDefault()
     # En az 1, en fazla 5 paralel iş yapabilen havuz
-    $global:GeminiPool = [runspacefactory]::CreateRunspacePool(1, 5, $sessionState, $Host)
-    $global:GeminiPool.Open()
+    $global:MrCleanPool = [runspacefactory]::CreateRunspacePool(1, 5, $sessionState, $Host)
+    $global:MrCleanPool.Open()
 }
 
 # --- YAPILANDIRMA ---
@@ -281,7 +280,15 @@ if (-not $global:GeminiPool) {
 # #region 3 -- GLOBAL DEGISKENLER & DOSYA YOLLARI
 # =========================================================================
 
-$AppDataPath = "$env:APPDATA\GeminiCare"
+# Migration: %APPDATA%\GeminiCare -> %APPDATA%\MrClean (one-time, eski kurulumlardan gelen kullanicilar icin)
+# Eski klasor varsa ve yeni klasor yoksa, butun ayarlari/profilleri korumak icin rename yap.
+$_legacyAppData = "$env:APPDATA\GeminiCare"
+$_newAppData    = "$env:APPDATA\MrClean"
+if ((Test-Path -LiteralPath $_legacyAppData) -and -not (Test-Path -LiteralPath $_newAppData)) {
+    try { Rename-Item -LiteralPath $_legacyAppData -NewName 'MrClean' -ErrorAction Stop } catch { }
+}
+
+$AppDataPath = "$env:APPDATA\MrClean"
 if (-not (Test-Path $AppDataPath)) { New-Item -Path $AppDataPath -ItemType Directory -Force | Out-Null }
 
 $Winapp2Path = "$AppDataPath\Winapp2.ini"
@@ -290,8 +297,8 @@ $AppStatePath   = "$AppDataPath\app_state.json"
 $CachePath      = "$AppDataPath\app_cache.json"
 # Auto-update: kullanicinin atladigi surumler ve guncelleme staging klasoru
 # PS2EXE-safe: $env:APPDATA kullaniyoruz, $AppDataPath script scope'a bagimli olmasin
-$global:UpdateSkippedFile = "$env:APPDATA\GeminiCare\update_skipped_versions.txt"
-$global:UpdateStagingDir  = "$env:APPDATA\GeminiCare\update_staging"
+$global:UpdateSkippedFile = "$env:APPDATA\MrClean\update_skipped_versions.txt"
+$global:UpdateStagingDir  = "$env:APPDATA\MrClean\update_staging"
 
 # --- LOGO + ICON BASE64 EMBED (PS2EXE tek-EXE deneyimi icin) ---
 # Yan dosya gerekmez - runtime memory streamden yuklenir.
@@ -347,10 +354,10 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.1.1"
+$global:AppVersion = "1.0.6"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
-$global:AppRepo = "zeugmass/GeminiSystemCare"
+$global:AppRepo = "zeugmass/MrClean"
 
 # Update check sonucu: yeni surum varsa @{ Tag, Notes, ExeUrl, Ps1Url, HashUrl, ExeHash, Ps1Hash } doldurulur.
 # Add_Loaded async check tamamlandiginda set edilir, UI status bar'da notification gosterir.
@@ -1340,7 +1347,7 @@ function Get-Default-Tweaks {
                 DetectScript='
                     # Iki kosul: ya mstsc.exe gercekten silinmis ya da bizim marker registry key set edilmis
                     if (-not (Test-Path "$env:SystemRoot\System32\mstsc.exe")) { return $true }
-                    $m = (Get-ItemProperty -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Name "RdcUninstall" -ErrorAction SilentlyContinue).RdcUninstall
+                    $m = (Get-ItemProperty -Path "HKCU:\Software\MrClean\AppliedMarkers" -Name "RdcUninstall" -ErrorAction SilentlyContinue).RdcUninstall
                     return ("$m" -eq "1")
                 ';
                 Command='
@@ -1363,13 +1370,13 @@ function Get-Default-Tweaks {
                         Write-Host "[mstsc] Yuklu degil — atlandi."
                     }
                     # Marker — Win11 sistem bileseni olarak kaldirilmasa bile kullanici tweak uyguladigini bilsin
-                    if (-not (Test-Path "HKCU:\Software\GeminiCare\AppliedMarkers")) {
-                        New-Item -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Force -ErrorAction SilentlyContinue | Out-Null
+                    if (-not (Test-Path "HKCU:\Software\MrClean\AppliedMarkers")) {
+                        New-Item -Path "HKCU:\Software\MrClean\AppliedMarkers" -Force -ErrorAction SilentlyContinue | Out-Null
                     }
-                    Set-ItemProperty -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Name "RdcUninstall" -Value 1 -Type DWord -Force
+                    Set-ItemProperty -Path "HKCU:\Software\MrClean\AppliedMarkers" -Name "RdcUninstall" -Value 1 -Type DWord -Force
                 ';
                 UndoCommand='
-                    Remove-ItemProperty -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Name "RdcUninstall" -Force -ErrorAction SilentlyContinue
+                    Remove-ItemProperty -Path "HKCU:\Software\MrClean\AppliedMarkers" -Name "RdcUninstall" -Force -ErrorAction SilentlyContinue
                     Write-Host "[mstsc] Marker silindi. NOT: mstsc.exe Win11 sistem bileseni olarak otomatik geri yuklenmiyor — gerekirse manuel olarak winget/Optional Features ile yukleyin."
                 '
             },
@@ -1380,7 +1387,7 @@ function Get-Default-Tweaks {
                 Risk="Low"; RestartExplorer=$false;
                 DetectScript='
                     if (-not (Test-Path "$env:SystemRoot\System32\SnippingTool.exe")) { return $true }
-                    $m = (Get-ItemProperty -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Name "OldSnippingUninstall" -ErrorAction SilentlyContinue).OldSnippingUninstall
+                    $m = (Get-ItemProperty -Path "HKCU:\Software\MrClean\AppliedMarkers" -Name "OldSnippingUninstall" -ErrorAction SilentlyContinue).OldSnippingUninstall
                     return ("$m" -eq "1")
                 ';
                 Command='
@@ -1402,13 +1409,13 @@ function Get-Default-Tweaks {
                     } else {
                         Write-Host "[SnippingTool] Yuklu degil — atlandi."
                     }
-                    if (-not (Test-Path "HKCU:\Software\GeminiCare\AppliedMarkers")) {
-                        New-Item -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Force -ErrorAction SilentlyContinue | Out-Null
+                    if (-not (Test-Path "HKCU:\Software\MrClean\AppliedMarkers")) {
+                        New-Item -Path "HKCU:\Software\MrClean\AppliedMarkers" -Force -ErrorAction SilentlyContinue | Out-Null
                     }
-                    Set-ItemProperty -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Name "OldSnippingUninstall" -Value 1 -Type DWord -Force
+                    Set-ItemProperty -Path "HKCU:\Software\MrClean\AppliedMarkers" -Name "OldSnippingUninstall" -Value 1 -Type DWord -Force
                 ';
                 UndoCommand='
-                    Remove-ItemProperty -Path "HKCU:\Software\GeminiCare\AppliedMarkers" -Name "OldSnippingUninstall" -Force -ErrorAction SilentlyContinue
+                    Remove-ItemProperty -Path "HKCU:\Software\MrClean\AppliedMarkers" -Name "OldSnippingUninstall" -Force -ErrorAction SilentlyContinue
                     Write-Host "[SnippingTool] Marker silindi."
                 '
             },
@@ -2070,7 +2077,7 @@ function Get-Default-Tweaks {
 					}
 
 					# 2b. Optimize .nip yaz ve import et (FR33THY birebir: hem -silentImport hem -silent)
-					$tmpNip = Join-Path $env:TEMP "geminicare_nv_optimized.nip"
+					$tmpNip = Join-Path $env:TEMP "mrclean_nv_optimized.nip"
 					try {
 						Set-Content -Path $tmpNip -Value $global:NvidiaInspectorOptimizedNip -Encoding Unicode -Force
 						Write-Host "[NVIDIA] Optimize profil import ediliyor..."
@@ -2124,7 +2131,7 @@ function Get-Default-Tweaks {
 						}
 					} else {
 						# Backup yok — bos profil yukle (orijinal FR33THY davranisi)
-						$tmpEmpty = Join-Path $env:TEMP "geminicare_nv_empty.nip"
+						$tmpEmpty = Join-Path $env:TEMP "mrclean_nv_empty.nip"
 						try {
 							Set-Content -Path $tmpEmpty -Value $global:NvidiaInspectorEmptyNip -Encoding Unicode -Force
 							Start-Process -FilePath $insp -ArgumentList "-silentImport -silent `"$tmpEmpty`"" -Wait -WindowStyle Hidden -ErrorAction Stop
@@ -2241,7 +2248,7 @@ Add-Type -AssemblyName PresentationFramework,PresentationCore,WindowsBase,System
 $xaml = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Sistem Temizleme Aracı Ultimate (PRO V10 - Modern UI)" Height="950" Width="1280" 
+        Title="MrClean Sistem Bakım Aracı v$($global:AppVersion)" Height="950" Width="1280"
         Background="#181818" WindowStartupLocation="CenterScreen"
         FontFamily="Segoe UI" UseLayoutRounding="True">
   
@@ -4388,7 +4395,7 @@ function Get-System-Gpu-Vendors {
 # =========================================================
 # NVIDIA PROFILE INSPECTOR — HEADLESS DOWNLOAD + CACHE
 # =========================================================
-# AppData\GeminiCare\nvidiaProfileInspector.exe path'ini dondurur. Cache yoksa indirir.
+# AppData\MrClean\nvidiaProfileInspector.exe path'ini dondurur. Cache yoksa indirir.
 #
 # 2 kademeli download:
 #   1. ONCE: FR33THY raw URL (tek .exe, ~1 MB) — MSI Utility V3 ile ayni pattern, hizli
@@ -4414,7 +4421,7 @@ function Get-NvidiaInspectorPath {
     try {
         WpfLog "[NPI] Birincil kaynaktan indiriliyor (FR33THY)..."
         $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "GeminiCare-App")
+        $wc.Headers.Add("User-Agent", "MrClean-App")
         $wc.DownloadFile($primaryUrl, $cacheExe)
         if ((Test-Path $cacheExe) -and (Get-Item $cacheExe).Length -gt 100KB) {
             Unblock-File -Path $cacheExe -ErrorAction SilentlyContinue
@@ -4431,7 +4438,7 @@ function Get-NvidiaInspectorPath {
     try {
         WpfLog "[NPI] Yedek kaynaktan indiriliyor (Orbmu2k Releases API)..."
         $apiUrl = "https://api.github.com/repos/Orbmu2k/nvidiaProfileInspector/releases"
-        $headers = @{ "User-Agent" = "GeminiCare-App" }
+        $headers = @{ "User-Agent" = "MrClean-App" }
         $releases = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get -TimeoutSec 15 -ErrorAction Stop
 
         # En son STABIL (prerelease=$false) sürümü sec
@@ -4446,7 +4453,7 @@ function Get-NvidiaInspectorPath {
         $extractDir = Join-Path $AppDataPath "nvidiaProfileInspector"
 
         $wc = New-Object System.Net.WebClient
-        $wc.Headers.Add("User-Agent", "GeminiCare-App")
+        $wc.Headers.Add("User-Agent", "MrClean-App")
         $wc.DownloadFile($asset.browser_download_url, $zipPath)
 
         if (-not (Test-Path $zipPath) -or (Get-Item $zipPath).Length -le 0) { throw "ZIP indirilemedi." }
@@ -4702,7 +4709,7 @@ function Test-AppUpdate {
         param($repo)
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         try {
-            $headers = @{ "User-Agent" = "GeminiCare-App" }
+            $headers = @{ "User-Agent" = "MrClean-App" }
             $apiUrl = "https://api.github.com/repos/$repo/releases/latest"
             $res = Invoke-RestMethod -Uri $apiUrl -Headers $headers -Method Get -TimeoutSec 5 -ErrorAction Stop
             return ($res | ConvertTo-Json -Depth 10 -Compress)
@@ -4782,7 +4789,7 @@ function Test-AppUpdate {
 # Updater PS1 template — AppData'ya yazilip Start-Process ile baslatilir.
 # Parametreler: $TargetPid (ana program), $AppDir, $StagingDir, $LaunchExe (yeniden baslatilacak)
 $global:UpdaterScriptTemplate = @'
-# GeminiCare Auto-Updater Script (otomatik olusturuldu)
+# MrClean Auto-Updater Script (otomatik olusturuldu)
 # Ana programi kapanmasini bekler, dosyalari swap eder, programi tekrar baslatir.
 param(
     [Parameter(Mandatory=$true)][int]$TargetPid,
@@ -4860,7 +4867,7 @@ function Invoke-AppUpdate {
             & $ProgressCallback 5 "SHA256 listesi indiriliyor..."
             $hashFile = Join-Path $global:UpdateStagingDir "SHA256SUMS.txt"
             $wc = New-Object System.Net.WebClient
-            $wc.Headers.Add("User-Agent", "GeminiCare-App")
+            $wc.Headers.Add("User-Agent", "MrClean-App")
             $wc.DownloadFile($upd.HashUrl, $hashFile)
             # Format: "<hash>  <filename>" her satirda
             Get-Content $hashFile | ForEach-Object {
@@ -4887,7 +4894,7 @@ function Invoke-AppUpdate {
         $target = Join-Path $global:UpdateStagingDir $d.Name
         try {
             $wc = New-Object System.Net.WebClient
-            $wc.Headers.Add("User-Agent", "GeminiCare-App")
+            $wc.Headers.Add("User-Agent", "MrClean-App")
             $wc.DownloadFile($d.Url, $target)
 
             # Boyut sanity check (en az 50 KB ve <100 MB)
@@ -5174,7 +5181,7 @@ function Invoke-RestorePointAsync {
 
     # Runspace olustur ve baslat
     $ps = [powershell]::Create()
-    $ps.RunspacePool = $global:GeminiPool
+    $ps.RunspacePool = $global:MrCleanPool
     $ps.AddScript({
         param($desc)
         try {
@@ -5744,6 +5751,7 @@ function Show-Privacy-Warning {
 
 function Apply-System-Tweaks {
     # Tum external command cache'lerini Hidden mode'da prime et (terminal flash yok)
+    # Native exe'ler (netsh/bcdedit/reg) ana process'in hidden console'unu inherit eder
     Refresh-PowerCfg-Cache
     Refresh-BcdEdit-Cache
     Refresh-NetshTcp-Cache
@@ -6471,7 +6479,7 @@ function Show-TweakManager {
 # =========================================================
 # TWEAK AUDIT LOG (Bonus E1)
 # Her Apply / Undo islemini timestamp + tweak listesiyle dosyaya yazar.
-# Dosya: %APPDATA%\GeminiCare\tweak_history.log
+# Dosya: %APPDATA%\MrClean\tweak_history.log
 # =========================================================
 function Write-TweakAuditLog {
     param(
@@ -6593,7 +6601,7 @@ function Invoke-QuickUndo {
 
 # =========================================================
 # TWEAK STATUS CACHE — ASYNC CHUNKED SCAN
-# - Cache dosyasi: %APPDATA%\GeminiCare\tweak_status_cache.json
+# - Cache dosyasi: %APPDATA%\MrClean\tweak_status_cache.json
 # - TTL: 30 dakika
 # - Anahtar formati: tweak.Name (cogu unique)
 # - Chunked scan: her DispatcherTimer tick'inde 10 tweak isle, UI nefes alsin
@@ -7613,7 +7621,7 @@ function Start-Worker-Process($ScriptContent, $activeBtn, $type, $TimeoutSeconds
     $msgQueue = New-Object System.Collections.Concurrent.ConcurrentQueue[string]
 
     $ps = [powershell]::Create()
-    $ps.RunspacePool = $global:GeminiPool
+    $ps.RunspacePool = $global:MrCleanPool
 
     # 2. İÇ YARDIMCI SCRİPT
     # `$Q` parametresi ile bellek kuyruğumuzu arka plan odacığına gizlice sokuyoruz.
@@ -7809,7 +7817,8 @@ function Refresh-StartupView {
                     $cleanName = $p.Name
                     $realPath = $p.Value
 
-                    if ($p.Name -match "^GeminiDisabled_(.*)") {
+                    # Eski (GeminiDisabled_) ve yeni (MrCleanDisabled_) prefix'leri normalize et.
+                    if ($p.Name -match "^(?:GeminiDisabled|MrCleanDisabled)_(.*)") {
                         $cleanName = $Matches[1]
                         Rename-ItemProperty -Path $reg.Path -Name $p.Name -NewName $cleanName -Force -ErrorAction SilentlyContinue
                     }
@@ -8207,7 +8216,7 @@ $script:RunEmbeddedToolBlock = {
         param($u)
         [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
         try {
-            $headers = @{"User-Agent" = "GeminiCare-App"}
+            $headers = @{"User-Agent" = "MrClean-App"}
             $res = Invoke-RestMethod -Uri $u -Headers $headers -Method Get -TimeoutSec 10 -ErrorAction Stop
             # Array bozulmasını önlemek için sonucu JSON'a sıkıştırıp metin olarak yolluyoruz
             return ($res | ConvertTo-Json -Depth 10 -Compress)
@@ -8374,7 +8383,7 @@ $script:RunEmbeddedToolBlock = {
                     if (Test-Path '$instPath') { Remove-Item '$instPath' -Force -ErrorAction SilentlyContinue }
 
                     `$wc = New-Object System.Net.WebClient
-                    `$wc.Headers.Add("User-Agent", "GeminiCare-App")
+                    `$wc.Headers.Add("User-Agent", "MrClean-App")
                     `$wc.DownloadFile('$downloadUrl', '$instPath')
                     
                     if (Test-Path '$instPath') {
@@ -8582,7 +8591,7 @@ $script:RunMsiUtilityBlock = {
         try {
             [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls13
             `$wc = New-Object System.Net.WebClient
-            `$wc.Headers.Add("User-Agent", "GeminiCare-App")
+            `$wc.Headers.Add("User-Agent", "MrClean-App")
             `$wc.DownloadFile('$downloadUrl', '$targetPath')
 
             if ((Test-Path '$targetPath') -and (Get-Item '$targetPath').Length -gt 0) {
@@ -8599,7 +8608,7 @@ $script:RunMsiUtilityBlock = {
         } catch {
             Log "❌ HATA: `$(`$_.Exception.Message)"
             Log "   Not: Antivirüs dosyayı engelliyor olabilir."
-            Log "   Çözüm: GeminiCare klasörünü istisnaya ekleyin: $AppDataPath"
+            Log "   Çözüm: MrClean klasörünü istisnaya ekleyin: $AppDataPath"
         }
         WS 'Bitti'
 "@
@@ -9175,7 +9184,7 @@ function Show-RecommendedProfiles {
 
 # ---- Show-ProfileManager ----
 function Show-ProfileManager {
-    $profileDir = Join-Path $env:APPDATA "GeminiCare\Profiles"
+    $profileDir = Join-Path $env:APPDATA "MrClean\Profiles"
     if (-not (Test-Path $profileDir)) {
         New-Item -ItemType Directory -Path $profileDir -Force | Out-Null
     }
@@ -9252,7 +9261,7 @@ function Show-ProfileManager {
 
         <TextBlock Grid.Row="0" Text="Profil Yöneticisi" Foreground="#FFFFFF"
                    FontSize="18" FontWeight="Bold" Margin="0,0,0,4"/>
-        <TextBlock Grid.Row="1" Text="Son 3 profil listelenir. Profiller AppData\GeminiCare\Profiles klasörüne kaydedilir."
+        <TextBlock Grid.Row="1" Text="Son 3 profil listelenir. Profiller AppData\MrClean\Profiles klasörüne kaydedilir."
                    Foreground="#555" FontSize="11" Margin="0,0,0,12" TextWrapping="Wrap"/>
 
         <!-- PROFİL LİSTESİ -->
@@ -11221,8 +11230,8 @@ $ctxToggleStartup.Add_Click({
                 # Kayıt defterinde suni (sahte) bir değişiklik yapıp silerek Windows'un önbelleğini
                 # zorla yenilemesini (Invalidate) sağlıyoruz. Böylece anında senkronize oluyor.
                 try {
-                    Set-ItemProperty -Path $item.RegPath -Name "GeminiCacheBuster" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
-                    Remove-ItemProperty -Path $item.RegPath -Name "GeminiCacheBuster" -Force -ErrorAction SilentlyContinue
+                    Set-ItemProperty -Path $item.RegPath -Name "MrCleanCacheBuster" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+                    Remove-ItemProperty -Path $item.RegPath -Name "MrCleanCacheBuster" -Force -ErrorAction SilentlyContinue
                 } catch {}
             }
             elseif ($item.Source -eq "Task") {
@@ -11815,8 +11824,8 @@ $btnWatchStart.Add_Click({
         if ($r) { try { $r.Dispose() } catch {} }
     }
 
-    $script:WatcherLog1 = "$env:TEMP\Gemini_W1.txt"
-    $script:WatcherLog2 = "$env:TEMP\Gemini_W2.txt"
+    $script:WatcherLog1 = "$env:TEMP\MrClean_W1.txt"
+    $script:WatcherLog2 = "$env:TEMP\MrClean_W2.txt"
     Remove-Item $script:WatcherLog1,$script:WatcherLog2 -Force -ErrorAction SilentlyContinue
 
     $script:WP1 = $p1; $script:WP2 = $p2
@@ -12470,7 +12479,7 @@ $btnSfcScan.Add_Click({
     $lblStatus.Text = "SFC Taraması yapılıyor... %0"
 
     # --- TEMP LOG DOSYASI: SFC ciktisini buraya yaz, timer parse etsin ---
-    $script:sfcLogPath = Join-Path $env:TEMP "geminicare_sfc_progress.log"
+    $script:sfcLogPath = Join-Path $env:TEMP "mrclean_sfc_progress.log"
     Remove-Item -Path $script:sfcLogPath -Force -ErrorAction SilentlyContinue
     "" | Out-File -FilePath $script:sfcLogPath -Encoding UTF8 -Force
 
@@ -13398,7 +13407,7 @@ $btnSettings.Add_Click({
         
         # İçe Aktar
         $bImp.Add_Click({
-            $ofd = New-Object Microsoft.Win32.OpenFileDialog; $ofd.Filter = "Gemini Ayar Dosyası (*.json)|*.json"
+            $ofd = New-Object Microsoft.Win32.OpenFileDialog; $ofd.Filter = "MrClean Ayar Dosyası (*.json)|*.json"
             if ($ofd.ShowDialog() -eq $true) {
                 try {
                     $json = Get-Content $ofd.FileName -Raw | ConvertFrom-Json
@@ -13429,7 +13438,7 @@ $btnSettings.Add_Click({
                 $cPr = $winExp.FindName('chkMyProfile'); $bDoEx = $winExp.FindName('btnDoExport')
                 
                 $bDoEx.Add_Click({
-                    $sfd = New-Object Microsoft.Win32.SaveFileDialog; $sfd.Filter = "Gemini Ayar Dosyası (*.json)|*.json"; $sfd.FileName = "Gemini_Settings.json"
+                    $sfd = New-Object Microsoft.Win32.SaveFileDialog; $sfd.Filter = "MrClean Ayar Dosyası (*.json)|*.json"; $sfd.FileName = "MrClean_Settings.json"
                     if ($sfd.ShowDialog() -eq $true) {
                         $exportData = [ordered]@{}
                         if ($cBl.IsChecked) { $exportData["Blacklist"] = $global:Blacklist }
@@ -13708,11 +13717,11 @@ $Win.Add_Closing({
 
     # 3. YENİ: GLOBAL RUNSPACE POOL KAPATMA (ÇOK KRİTİK)
     # Claude'un P5 maddesi için eklediğimiz havuzu burada tahliye ediyoruz.
-    if ($null -ne $global:GeminiPool) {
+    if ($null -ne $global:MrCleanPool) {
         try {
-            $global:GeminiPool.Close()
-            $global:GeminiPool.Dispose()
-            $global:GeminiPool = $null
+            $global:MrCleanPool.Close()
+            $global:MrCleanPool.Dispose()
+            $global:MrCleanPool = $null
         } catch {}
     }
 
@@ -13734,9 +13743,9 @@ $Win.Add_Closing({
 
     # 6. Geçici Dosya Temizliği (Redundant ama güvenli)
     $tempFiles = @(
-        "$env:TEMP\Gemini_W1.txt", "$env:TEMP\Gemini_W2.txt",
-        "$env:TEMP\Gemini_Log.txt", "$env:TEMP\Gemini_Status.txt",
-        "$env:TEMP\Gemini_Done.flag", "$env:TEMP\Gemini_Worker.ps1"
+        "$env:TEMP\MrClean_W1.txt", "$env:TEMP\MrClean_W2.txt",
+        "$env:TEMP\MrClean_Log.txt", "$env:TEMP\MrClean_Status.txt",
+        "$env:TEMP\MrClean_Done.flag", "$env:TEMP\MrClean_Worker.ps1"
     )
     foreach ($tf in $tempFiles) {
         if (Test-Path $tf) { try { Remove-Item $tf -Force -ErrorAction SilentlyContinue } catch {} }

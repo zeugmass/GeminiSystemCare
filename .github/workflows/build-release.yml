@@ -74,10 +74,10 @@ jobs:
           $ps2exeArgs = @{
             InputFile    = "TemizlikAsistani.ps1"
             OutputFile   = "TemizlikAsistani.exe"
-            Title        = "Gemini Sistem Bakim Araci"
+            Title        = "MrClean Sistem Bakim Araci"
             Description  = "Windows icin kapsamli sistem bakim, optimizasyon ve tweak araci"
-            Company      = "GeminiCare"
-            Product      = "Gemini System Care"
+            Company      = "MrClean"
+            Product      = "MrClean"
             Copyright    = "(c) 2026"
             Version      = $version
             RequireAdmin = $true

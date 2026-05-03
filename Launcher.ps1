@@ -1,5 +1,5 @@
 # =========================================================
-# GEMINI SYSTEM CARE - LAUNCHER (BAŞLATICI)
+# MRCLEAN - LAUNCHER (BAŞLATICI)
 # =========================================================
 # NOT: Asıl auto-update mantığı ana programın (TemizlikAsistani.ps1) içine
 # entegre edilmiştir. Bu launcher dosyası eskiden GitHub'dan PS1 indiriyordu;
@@ -10,7 +10,7 @@
 # tutulmuştur. Yeni kullanım: Baslat.cmd → TemizlikAsistani.exe (veya .ps1)
 # =========================================================
 
-$localFolder = "$env:APPDATA\GeminiCare"
+$localFolder = "$env:APPDATA\MrClean"
 if (-not (Test-Path $localFolder)) { New-Item -Path $localFolder -ItemType Directory -Force | Out-Null }
 
 # Ana dosyayı bul ve çalıştır (öncelik: EXE → PS1)
@@ -29,7 +29,7 @@ if (Test-Path $exePath) {
     Add-Type -AssemblyName PresentationFramework
     [System.Windows.MessageBox]::Show(
         "Ana program dosyası bulunamadı.`n`nAranan: TemizlikAsistani.exe veya TemizlikAsistani.ps1`nKlasör: $scriptDir",
-        "Gemini System Care - Hata",
+        "MrClean - Hata",
         "OK", "Error"
     ) | Out-Null
 }

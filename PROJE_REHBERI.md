@@ -1,4 +1,4 @@
-# GEMINI SİSTEM BAKIM ARACI — PROJE REHBERİ
+# MRCLEAN SİSTEM BAKIM ARACI — PROJE REHBERİ
 
 > Bu dosya projeyi tekrar tekrar okumak yerine satır numaralarıyla doğrudan ilgili yere gidebilmek için referanstır.
 > Kullanıcı bir değişiklik istediğinde önce buraya bak → region numarasını/satır numarasını bul → sadece o bölümü oku ve düzenle.
@@ -32,7 +32,7 @@ Dosya başında TOC var. VS Code'da `Ctrl+K Ctrl+0` ile tüm region'ları katlar
 | # | Region | Satır Aralığı | İçindekiler |
 |---|---|---|---|
 | 01 | **C# INTEROP** | 28–183 | `$nativeCode` (Add-Type) — `NativeMethods`, `FileSelector`, `SecureWiper`, `RamCleaner`, `RamInfo`, `ProcessMonitor` |
-| 02 | **YÖNETİCİ KONTROL, RUNSPACE POOL, TEMA** | 187–219 | `Refresh-WindowsTheme`, `Refresh-Wallpaper`, admin check, GeminiPool |
+| 02 | **YÖNETİCİ KONTROL, RUNSPACE POOL, TEMA** | 187–219 | `Refresh-WindowsTheme`, `Refresh-Wallpaper`, admin check, MrCleanPool |
 | 03 | **GLOBAL DEĞİŞKENLER & DOSYA YOLLARI** | 223–280 | `$AppDataPath`, `$global:*` (Blacklist, MyProfile, StopOperation, vb.) |
 | 04 | **VARSAYILAN VERİLER** | 284–1075 | `Get-Default-Tweaks` (106 tweak), `Get-Default-WingetApps`, `Load-Repair-Tree`, `Get-SelectedTasks` |
 | 05 | **XAML TANIMLARI** | 1079–2467 | Ana pencere + 12 alt pencere heredoc (ToolMgr, Settings, NightMode, Countdown, Export, WingetMgr, TweakMgr, PrivacyWarn, Blacklist, CustomMgr, AddCustom, PathEdit) |
@@ -136,7 +136,7 @@ Ana pencere region 05 içinde (L1079–2467):
 ## 4. DOSYA YOLLARI (sabit)
 
 ```
-$AppDataPath    = %APPDATA%\GeminiCare
+$AppDataPath    = %APPDATA%\MrClean   # eski: %APPDATA%\GeminiCare (otomatik rename ile migrate edilir)
 $UserConfigPath = $AppDataPath\user_config.json
 $AppStatePath   = $AppDataPath\app_state.json
 $CachePath      = $AppDataPath\app_cache.json
@@ -164,7 +164,7 @@ $NoCacheFlag    = $AppDataPath\no_cache.flag
 ### MSI Utility V3: Base64 → GitHub download (Faz 2 sonrası)
 - `$global:MsiUtilityBase64` (~60 KB base64 string) dosyadan silindi
 - `$script:RunBase64ToolBlock` → `$script:RunMsiUtilityBlock` olarak yenilendi:
-  - İlk kullanımda `https://raw.githubusercontent.com/zeugmass/MSI_Utility_v3/main/MSI_util_v3.exe` → `%APPDATA%\GeminiCare\MSI_Utility_V3.exe`
+  - İlk kullanımda `https://raw.githubusercontent.com/zeugmass/MSI_Utility_v3/main/MSI_util_v3.exe` → `%APPDATA%\MrClean\MSI_Utility_V3.exe`
   - Sonraki kullanımlarda cache'den direkt çalıştırır (download yok)
   - `Start-Worker-Process` ile async (UI donmaz)
 - Tools menüsündeki `if ($global:MsiUtilityBase64...)` check'i kaldırıldı, her zaman gösterir
@@ -176,7 +176,7 @@ $NoCacheFlag    = $AppDataPath\no_cache.flag
 - HideFileExt, Hidden, Bu Bilgisayar Simgesi → "Soft" (artık Explorer kapanıp açılmıyor, açık pencereler refresh oluyor)
 - Görsel Efektler, Başlat Önerilenler, Klasik Sağ Tık → "Hard"
 - Yeni helper'lar: `Invoke-ShellSoftRefresh` (SHChangeNotify+WM_SETTINGCHANGE) ve `Invoke-ExplorerHardRestart` (`/factory,{75dff2b7-...}` ile boş pencere açmaz)
-- **`Check-Tweak-Status` async/chunked + cache** (Tweaks sekmesi açıldığında donma yok). Cache `%APPDATA%\GeminiCare\tweak_status_cache.json`, 30 dk TTL, her 20ms'de 10 tweak işlenir, UI canlı kalır
+- **`Check-Tweak-Status` async/chunked + cache** (Tweaks sekmesi açıldığında donma yok). Cache `%APPDATA%\MrClean\tweak_status_cache.json`, 30 dk TTL, her 20ms'de 10 tweak işlenir, UI canlı kalır
 
 **Sprint 2 — Config Güvenliği:**
 - `Save-User-Config`: atomic write (.tmp → verify → backup rotate → rename)
@@ -199,7 +199,7 @@ $NoCacheFlag    = $AppDataPath\no_cache.flag
 - **Yüksek risk uyarısı**: Apply sırasında `Risk="High"` tweak'ler için ekstra onay penceresi
 
 **Bonus:**
-- **E1 — Audit log**: `%APPDATA%\GeminiCare\tweak_history.log` her Apply ve QuickUndo işlemini timestamp'li yazar (5 MB üzeri otomatik yarıya kesilir)
+- **E1 — Audit log**: `%APPDATA%\MrClean\tweak_history.log` her Apply ve QuickUndo işlemini timestamp'li yazar (5 MB üzeri otomatik yarıya kesilir)
 - **E2 — Profil diff**: Recommended Profiles uygulanırken onay mesajında "X zaten aktif, Y yeni uygulanacak" diff bilgisi
 
 **Yeni global'ler:**
@@ -219,13 +219,13 @@ $NoCacheFlag    = $AppDataPath\no_cache.flag
 - **🎮 Low Latency (Espor)** kategorisine: `MSI Mode (GPU Interrupt) Aç` — tüm Display class GPU'lara `MSISupported=1` (Get-PnpDevice loop). DetectScript yok, IsActive special-case eklendi (Get-Tweak-IsActive Command/Batch dalı, "MSI Mode" name match)
 - **Yeni kategori "🎮 GPU Ayarları (Manuel)"** — Vendor-specific, profile'a dahil değil:
   - `AMD Adrenalin Optimizasyonu` (Vendor="AMD"): Reklam/popup/bildirim/auto-update kapat + grafik profil custom + UMD/power_v1 binary writes. Adrenalin yazılımını 30 sn açıp kapatır (registry commit zorunlu).
-  - `NVIDIA Optimizasyonu` (Vendor="NVIDIA"): Registry tweak'leri (PhysX→GPU, DevTools, RmProfilingAdminOnly, NvTray off, EnableGR535) + NVIDIA Profile Inspector ile Control Panel auto-config. **Otomatik backup**: Apply öncesi mevcut .nip yedeklenir (`%APPDATA%\GeminiCare\nvidia_profile_backup.nip`), Undo'da geri yüklenir → kullanıcının custom profilleri korunur.
+  - `NVIDIA Optimizasyonu` (Vendor="NVIDIA"): Registry tweak'leri (PhysX→GPU, DevTools, RmProfilingAdminOnly, NvTray off, EnableGR535) + NVIDIA Profile Inspector ile Control Panel auto-config. **Otomatik backup**: Apply öncesi mevcut .nip yedeklenir (`%APPDATA%\MrClean\nvidia_profile_backup.nip`), Undo'da geri yüklenir → kullanıcının custom profilleri korunur.
 
 **3) NVIDIA Inspector helper (region 9)**
 - `Get-NvidiaInspectorPath`: 2-kademeli download (cache yoksa)
   - Kademe 1: `https://github.com/FR33THYFR33THY/Ultimate-Files/raw/...inspector.exe` (tek .exe, ~1 MB) — MSI Utility V3 ile aynı pattern
   - Kademe 2: `Orbmu2k/nvidiaProfileInspector` Releases API → en son stabil .zip → Expand-Archive → exe extract
-  - Cache: `%APPDATA%\GeminiCare\nvidiaProfileInspector.exe`
+  - Cache: `%APPDATA%\MrClean\nvidiaProfileInspector.exe`
   - Hata durumunda `$null` döner — caller registry tweak'lerini yine de uygular (graceful degradation)
 
 **4) Recommended Profiles güncellemesi (region 13, `$script:RecommendedProfiles`)**
@@ -286,7 +286,7 @@ $NoCacheFlag    = $AppDataPath\no_cache.flag
 
 #### Eklenen globals (region 3)
 - `$global:AppVersion = "1.0.0"` — SemVer, her release'de elle artırılır
-- `$global:AppRepo = "zeugmass/GeminiSystemCare"` — README'de placeholder, kullanıcı kendi repo'sunu yazar
+- `$global:AppRepo = "zeugmass/MrClean"` — README'de placeholder, kullanıcı kendi repo'sunu yazar
 - `$global:UpdateAvailable` — yeni sürüm varsa `@{ Tag, CleanTag, Notes, ExeUrl, Ps1Url, HashUrl, ExeSize, Ps1Size, ReleaseUrl }`
 - `$global:UpdateSkippedFile = "$AppDataPath\update_skipped_versions.txt"` — kullanıcı atladığı sürümler
 - `$global:UpdateStagingDir = "$AppDataPath\update_staging"` — indirme staging
@@ -340,7 +340,7 @@ Test-AppUpdate          # async check, status bar'a bildirim
 |---|---|
 | HTTPS | GitHub default |
 | TLS 1.2+ | `[Net.ServicePointManager]::SecurityProtocol = ...` |
-| User-Agent | `"GeminiCare-App"` (GitHub API zorunlu) |
+| User-Agent | `"MrClean-App"` (GitHub API zorunlu) |
 | SHA256 | `SHA256SUMS.txt` parse + hash karşılaştırma; eşleşmezse abort |
 | Boyut check | 50 KB ≤ asset ≤ 100 MB |
 | MoTW unblock | `Unblock-File` indirme sonrası |
@@ -458,6 +458,65 @@ Tetikleyici: `git push --tags` ile `v*` formatında tag push edildiğinde
 
 ---
 
+### Sprint: Auto-Update Sistemi Stabilizasyonu (v1.0.x → v1.1.1)
+v1.0.0'dan sonra arka arkaya birçok PS2EXE-spesifik bug ortaya çıktı, hepsi çözüldü:
+
+**Sorun zinciri ve çözümleri:**
+| Sürüm | Sorun | Çözüm |
+|---|---|---|
+| v1.0.0 | İlk release çalıştı, ama açılışta beklenmedik MessageBox'lar | — |
+| v1.0.1 | Workflow YAML encoding hatası (✓ unicode) | shell: powershell → pwsh, ASCII output |
+| v1.0.2-1.0.3 | "False" MessageBox + Path null hataları | Test-AppUpdate null check, Write-* override, ConsoleHost detection (yanlış) |
+| v1.0.4-1.0.5 | "False" hala geliyor — debug log eklendi | PSRunspace-Host detection ile gerçek PS2EXE algılandı, override install edildi (yetmedi) |
+| v1.0.6 | -NoConsole flag kaldırıldı (test) | "False" gitti! Ama console terminal görünür (UX kötü) |
+| v1.0.7-1.0.8 | Console pencereyi gizle | Win32 ShowWindow + FreeConsole = pencere kapanır |
+| v1.0.9 | Logo/icon görünmüyor + Tools menü rengi okunmuyor | Base64 embed + TextBlock header |
+| **v1.1.0** | **Production-stable cleanup** | Debug log altyapısı tamamen kaldırıldı |
+| **v1.1.1** | Tweaks sekmesi 3-5 sn donma + Apply terminal flash + program kapanış IOException | Hidden console (FreeConsole'suz) + bcd/netsh/powercfg cache + Invoke-HiddenCommand |
+
+**Final mimari kararlar (v1.1.1):**
+- **Workflow**: PS2EXE `-NoConsole` flag'i KULLANILMIYOR (false MessageBox sorunu nedeniyle)
+- **Console gizleme**: `ShowWindow(SW_HIDE)` ile console attached + hidden tutulur. `FreeConsole` çağrılmaz çünkü:
+  - FreeConsole sonrası native exe child'lar (netsh, bcdedit, reg) kendi console'larını allocate eder → terminal flash
+  - FreeConsole sonrası program kapanırken `System.Console.ControlCHooker.Finalize()` IOException atar
+- **Cache pattern**: `bcdedit /enum`, `netsh int tcp show global`, `powercfg /getactivescheme` çıktıları script-level cache'lenir; `Check-Tweak-Status` ve `Apply-System-Tweaks` başında 1 kez prime edilir (60+ tweak için tekrar tekrar çağrılmaz)
+- **`Invoke-HiddenCommand`** helper: ProcessStartInfo + CreateNoWindow=true ile native exe çağrısı; cache prime için kullanılır
+
+**Eklenen helper'lar (region 9):**
+- `Invoke-HiddenCommand($FilePath, $Arguments)` — Hidden child process + stdout return
+- `Refresh-PowerCfg-Cache` (yenilendi) — Invoke-HiddenCommand kullanır
+- `Refresh-BcdEdit-Cache` (yeni)
+- `Refresh-NetshTcp-Cache` (yeni)
+- `Get-Tweak-IsActive` refactored — cache'lerden okur, per-tweak external call yapmaz
+
+**Eklenen build aracı:**
+- `Build-Local.ps1` (170 satır) — yerel PS2EXE compile, workflow ile birebir parametreler. Geliştirme akışı: edit PS1 → `.\Build-Local.ps1 -Run` → test → push (sadece çalışan sürüm)
+- ASCII-only encoding (Türkçe karakterler ı→i, ş→s, ü→u, ç→c) — bash UTF-8 BOM'suz yazma sorunu
+
+---
+
+### Sprint: Logo + Icon Embed + UI Iyileştirmeleri (v1.0.9)
+
+**Logo/Icon base64 embed:**
+- `mrclean.png` (35 KB base64) → `$global:LogoPngBase64`
+- `mrclean.ico` (256 KB base64) → `$global:LogoIcoBase64`
+- `Load-EmbeddedImage($Base64, $Freeze)` helper: byte[] → MemoryStream → BitmapImage (Freeze ile thread-safe)
+- Tek EXE deneyimi — yan dosya yok
+- PS1 boyutu: 743 KB → **1031 KB** (+290 KB, base64 nedenli)
+- Workflow `-IconFile mrclean.ico` (defansif kontrol — yoksa yine başarılı build)
+
+**UI yeniden organizasyon:**
+- Tools menüden "Programı Güncelle" KALDIRILDI
+- `Show-AppUpdateWindow` çağrısı 2 yere taşındı:
+  1. **Ayarlar > "Program Güncellemesi"** — yeni Border (Row 4): mevcut sürüm + repo bilgi + "🔄 Şimdi Kontrol Et" + "🌐 Releases Sayfası"
+  2. **Status bar (`$lblStatus`)** — `MouseLeftButtonUp` event ile clickable; `$global:UpdateAvailable` varsa modal açar
+- `Invoke-ManualUpdateCheck` helper fonksiyonu (Settings'ten çağrılır)
+- Settings height: 720 → 830 (yeni row için)
+- "Bu sürümü atla" butonu padding fix (Width=180)
+- `Show-AppUpdateWindow` içindeki MenuItem.Foreground tema override sorunu → **TextBlock header** pattern (PMButton style ile aynı)
+
+---
+
 ## 6. DÜZENLEME REHBERİ
 
 Bir fonksiyon/özelliği değiştirmek için:
@@ -465,3 +524,44 @@ Bir fonksiyon/özelliği değiştirmek için:
 2. Yaklaşık satır numarasına git → Grep ile doğrula (reorganizasyon sonrası ± birkaç satır oynama olabilir)
 3. `Read` ile ±30 satır oku, `Edit` ile değişiklik yap
 4. Büyük yapısal değişiklikten sonra bu rehberi güncelle
+
+---
+
+## 7. MEVCUT DURUM (yeni pencere için kaldığımız yer)
+
+**Çalışılan klasör:** `C:\Users\zeugmass\Desktop\TEST2\` (master), `C:\Users\zeugmass\Desktop\MrClean\` (git repo, yerel build/test) *(eski adı `GeminiSystemCare` — rebrand ile rename edildi)*
+
+**Mevcut sürüm:** `$global:AppVersion = "1.1.1"` — production-stable, debug instrumentation kaldırıldı
+
+**GitHub repo:** `zeugmass/MrClean` (public)
+
+**Geliştirme akışı (v1.1.1+):**
+1. PS1'i edit et (TEST2 veya MrClean içinde)
+2. `cd C:\Users\zeugmass\Desktop\MrClean`
+3. `.\Build-Local.ps1 -Run` (yerel compile + test, ~25 sn)
+4. Sorunsuz çalışıyorsa: `git add` + `git commit` + `git tag -a vX.Y.Z` + `git push --tags`
+5. GitHub Actions otomatik release oluşturur (~3 dk), kullanıcılar update bildirimi alır
+
+**Son user feedback:** v1.1.1 yerel build başarılı, EXE çalışıyor. **Push yapmadı henüz** — beklemede.
+
+**Sıradaki adım (yeni pencerede):**
+- Eğer user v1.1.1'i test etti ve sorunsuz: commit + tag + push
+- Yeni özellik/fix istek varsa: TEST2'de değişiklik yap → Build-Local.ps1 ile test et → push
+
+**Repo dosyaları:**
+- `TemizlikAsistani.ps1` — ana script (~14K satır, 1 MB) — region 1-15 yapısı
+- `.github/workflows/build-release.yml` — CI/CD (tag push → PS2EXE compile → Release)
+- `Build-Local.ps1` — yerel build aracı (yeni, v1.1.1 ile birlikte eklendi)
+- `Launcher.ps1` — EXE/PS1 köprü
+- `Baslat.cmd` — UAC elevation launcher
+- `mrclean.ico` + `mrclean.png` — logo dosyaları (workflow IconFile + base64 embed için)
+- `README.md`, `BeniOku.txt`, `PROJE_REHBERI.md` (bu dosya)
+- `.gitignore` — *.exe, *.backup, .claude/, *.before_tweaks_overhaul, vb.
+
+**Bilinen mimari özellikler (önemli):**
+- PS2EXE Console mode (NoConsole flag YOK)
+- Console attached + Hidden (ShowWindow SW_HIDE), FreeConsole çağrılmıyor
+- 3 cmd cache (bcdedit/netsh/powercfg) — tek seferde prime
+- Logo/icon base64 embed (yan dosya yok)
+- Tools menü update linki YOK — Settings + clickable status bar var
+- Auto-update: GitHub Releases API + SHA256 + B+C hibrit updater (PS1 script + rename trick)

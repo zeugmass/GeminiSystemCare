@@ -1,11 +1,11 @@
-# Gemini Sistem Bakım Aracı
+# MrClean Sistem Bakım Aracı
 
 Windows için kapsamlı sistem temizliği, optimizasyon ve tweak aracı. PowerShell + WPF ile yazılmış, tek dosya EXE olarak dağıtılır.
 
 ## 🚀 Kullanıcılar İçin
 
 ### Kurulum
-1. [GitHub Releases](https://github.com/zeugmass/GeminiSystemCare/releases) sayfasından **en son sürüm**ün asset'lerini indir:
+1. [GitHub Releases](https://github.com/zeugmass/MrClean/releases) sayfasından **en son sürüm**ün asset'lerini indir:
    - `TemizlikAsistani.exe` — tek dosya executable (önerilen)
    - `TemizlikAsistani.ps1` — kaynak kodu (geliştirici/ileri kullanıcı için)
    - `SHA256SUMS.txt` — dosya bütünlüğü doğrulama
@@ -30,18 +30,18 @@ Program açıldığında **arkaplanda** GitHub'dan yeni sürüm kontrol eder:
 EXE imzasız olduğu için ilk açılışta `Windows korudu` uyarısı çıkabilir:
 - "Daha fazla bilgi" → "Yine de çalıştır"
 
-Antivirüs yanlış pozitif veriyorsa: `%APPDATA%\GeminiCare` klasörünü AV istisnasına ekle.
+Antivirüs yanlış pozitif veriyorsa: `%APPDATA%\MrClean` klasörünü AV istisnasına ekle.
 
 ## 🛠️ Geliştiriciler İçin
 
 ### Repo Setup (ilk kurulum)
 
-1. **GitHub'da yeni public repo oluştur**: `zeugmass/GeminiSystemCare` (veya kendi adın)
+1. **GitHub'da yeni public repo oluştur**: `zeugmass/MrClean` (veya kendi adın)
 
 2. **Bu repo'yu lokale klonla**:
    ```bash
-   git clone https://github.com/zeugmass/GeminiSystemCare.git
-   cd GeminiSystemCare
+   git clone https://github.com/zeugmass/MrClean.git
+   cd MrClean
    ```
 
 3. **Mevcut dosyaları kopyala** (TemizlikAsistani.ps1, Baslat.cmd, vs).
@@ -134,7 +134,7 @@ Workflow ücretsiz GitHub Actions runner (windows-latest) kullanır. Ayda 2000 d
 ## 📁 Repo Yapısı
 
 ```
-GeminiSystemCare/
+MrClean/
 ├── TemizlikAsistani.ps1      # Ana script (~13K satır)
 ├── Baslat.cmd                # UAC elevation launcher
 ├── Launcher.ps1              # EXE/PS1 köprü launcher

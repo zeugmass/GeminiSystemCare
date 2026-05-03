@@ -1,7 +1,7 @@
-# 📘 GEMINI SISTEM BAKIM ARACI (ULTIMATE) - KULLANIM KILAVUZU
+# 📘 MRCLEAN SISTEM BAKIM ARACI - KULLANIM KILAVUZU
 
 ### 🟢 1. GİRİŞ: Program Nedir?
-Gemini Sistem Bakım Aracı; Windows işletim sisteminizi **temizlemek**, **hızlandırmak**, **özelleştirmek** ve **güncel tutmak** için tasarlanmış gelişmiş bir PowerShell aracıdır.
+MrClean Sistem Bakım Aracı; Windows işletim sisteminizi **temizlemek**, **hızlandırmak**, **özelleştirmek** ve **güncel tutmak** için tasarlanmış gelişmiş bir PowerShell aracıdır.
 Program **Yönetici Yetkisi** ile çalışır ve sisteminizdeki gereksiz dosyaları silmekten, gizlilik ayarlarını (kamera, mikrofon vb.) yönetmeye, uygulama güncellemelerinden sistem onarımına kadar her şeyi tek bir pencereden yapmanızı sağlar.
 
 ---

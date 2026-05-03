@@ -1,5 +1,5 @@
 # =========================================================
-# Gemini System Care — .gitignore
+# MrClean — .gitignore
 # Repo'ya yanlislikla yedek/cache/personal dosyalar girmesin
 # =========================================================
 
@@ -60,7 +60,7 @@ tmp/
 *.tmp
 
 # AppData test verisi (yanlışlıkla repo'ya kopyalanırsa)
-GeminiCare/
+MrClean/
 
 # IntelliJ vs (ihtimal)
 *.iml
