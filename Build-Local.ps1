@@ -55,6 +55,20 @@ $ps1Size = [Math]::Round((Get-Item $ps1Path).Length/1KB, 1)
 Write-Host "  Kaynak:  TemizlikAsistani.ps1 ($ps1Size KB)"
 $iconLabel = if ($useIcon) { 'mrclean.ico' } else { 'YOK (default)' }
 Write-Host "  Ikon:    $iconLabel"
+
+# 2b. Latest git tag karsilastirma (warning) — push'tan sonce AppVersion bump'i unutmayi onler.
+try {
+    $lastTag = (& git -C $scriptDir describe --tags --abbrev=0 2>$null)
+    if ($LASTEXITCODE -eq 0 -and $lastTag) {
+        $lastTagVer = ($lastTag -replace '^v','').Trim()
+        if ($version -eq $lastTagVer) {
+            Write-Host "  UYARI:   PS1 AppVersion ($version) son git tag ile AYNI ($lastTag)." -ForegroundColor Yellow
+            Write-Host "           Yeni release icin AppVersion'u bump etmen gerekiyor (auto-update loop'u onler)." -ForegroundColor Yellow
+        } else {
+            Write-Host "  Son tag: $lastTag (PS1 ile uyumsuz, push'ta tag = v$version olmali)" -ForegroundColor DarkGray
+        }
+    }
+} catch { }
 Write-Host ""
 
 # 3. PS2EXE module yuklu mu?

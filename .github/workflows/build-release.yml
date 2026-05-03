@@ -52,6 +52,25 @@ jobs:
           }
           Write-Host "[OK] Syntax clean"
 
+      - name: Verify AppVersion matches tag
+        shell: pwsh
+        run: |
+          $tag = "${env:GITHUB_REF_NAME}"
+          $tagVersion = $tag -replace '^v',''
+          $ps1Content = Get-Content "$env:GITHUB_WORKSPACE\TemizlikAsistani.ps1" -Raw -Encoding UTF8
+          $verMatch = [regex]::Match($ps1Content, '\$global:AppVersion\s*=\s*"([^"]+)"')
+          if (-not $verMatch.Success) {
+            Write-Host "::error::PS1 icinde `$global:AppVersion bulunamadi"
+            exit 1
+          }
+          $ps1Version = $verMatch.Groups[1].Value
+          if ($tagVersion -ne $ps1Version) {
+            Write-Host "::error::Version mismatch! Tag: '$tagVersion'  /  PS1 `$global:AppVersion: '$ps1Version'"
+            Write-Host "::error::Auto-update sonsuz dongusu olusur. PS1'de `$global:AppVersion=`"$tagVersion`" yapip yeni tag pushlayin."
+            exit 1
+          }
+          Write-Host "[OK] Version sync: $tagVersion"
+
       - name: Compile PS1 to EXE
         shell: pwsh
         run: |
