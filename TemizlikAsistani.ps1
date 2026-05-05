@@ -354,7 +354,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.2.2"
+$global:AppVersion = "1.2.3"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/MrClean"
@@ -365,6 +365,11 @@ $global:UpdateAvailable = $null
 
 # Atla edilen surumler: kullanici "Bu surumu atla" derse buraya yazilir, ayni surum icin tekrar uyari gosterilmez.
 $global:UpdateSkippedFile = $null  # AppDataPath set edildikten sonra dolacak (asagida)
+
+# Geri Bildirim sistemi (v1.2.3): kullanici Settings -> Geri Bildirim butonuna basinca form acilir,
+# Send-Feedback fonksiyonu Discord webhook'una embed JSON POST eder. URL EXE'ye gomulu (public repo,
+# leak riski dusuk; spam olursa Discord'da webhook regenerate edilir).
+$global:FeedbackWebhookUrl = "https://discord.com/api/webhooks/1500908864495947896/Js_LeUWxitWKB7EJJ11aQHVTgaOXiVENuY0T1zj3Ob8RWbgPkyPRqjffJLCCcBTyraw2"
 
 # --- NVIDIA PROFILE INSPECTOR .NIP (Optimize Profil Icerigi) ---
 # FR33THY tweak guide tabanli optimize NVIDIA Control Panel ayarlari.
@@ -591,7 +596,7 @@ function Get-Default-Tweaks {
             @{
                 Name="Karanlık Modu Aç (Sistem + Wallpaper + Kilit Ekranı)";
 				SubCategory="Renkler";
-                Description="Komple koyu tema paketi — FR33THY 2 scriptin birlesimi + Spotlight kapatma. Tek tikla:`n`n• Sistem & uygulamalar koyu tema (AppsUseLightTheme=0, SystemUsesLightTheme=0)`n• Saydamlik kapali (EnableTransparency=0)`n• Renksiz baslik cubuklari (ColorPrevalence=0)`n• DWM accent rengi siyah (0xff191919) — pencere kenarlari, taskbar`n• Accent palette gri tonlari (Win11 'Renkler' bolumunde gorunur)`n• Klasik kontrol paneli arka plani siyah`n• Masaustu: Spotlight kapatilir, BackgroundType=1 (duz renk modu) -> tam siyah arka plan`n• Kilit ekrani: ekran cozunurlugunde siyah JPG (C:\\Windows\\Black.jpg)`n`nTum 'siyah' yuzeyleri ve Windows Spotlight'i tek tweak ile yonetir.";
+                Description="Komple koyu tema paketi (v1.2.3). Tek tikla:`n`n• Sistem & uygulamalar koyu tema (AppsUseLightTheme=0, SystemUsesLightTheme=0)`n• Saydamlik kapali (EnableTransparency=0)`n• Renksiz baslik cubuklari (ColorPrevalence=0)`n• DWM accent siyah (0xff191919) — pencere kenarlari, taskbar`n• Accent palette Sari/Altin (Win11 standart, Baslat menusu tile renkleri)`n• Klasik kontrol paneli arka plani siyah`n• Masaustu: BackgroundType=1 (Duz renk modu) -> tam siyah arka plan`n• Kilit ekrani: ekran cozunurlugunde siyah JPG (C:\\Windows\\Black.jpg)`n`nUndo: tema light + Windows Spotlight wallpaper moduna donus.";
                 RestartExplorer=$false;
                 Command='
                     # === BOLUM 1: SISTEM TEMASI ===
@@ -607,11 +612,12 @@ function Get-Default-Tweaks {
                     }
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Name "AppsUseLightTheme" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
 
-                    # Accent Palette (gri tonlari) — FR33THY hex degeri
+                    # Accent Palette: Win11 standart Sari/Altin 32-byte palette (kullanici secimi v1.2.3, gercek registry verisi)
+                    # 8 ton: Light3, Light2, Light1, Base (#FFB900 ana altin), Dark1, Dark2, Dark3, Complementary (teal)
                     if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent")) {
                         New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent" -Force -ErrorAction SilentlyContinue | Out-Null
                     }
-                    $palette = [byte[]](0x64,0x64,0x64,0x00, 0x6b,0x6b,0x6b,0x00, 0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00, 0x00,0x00,0x00,0x00)
+                    $palette = [byte[]](0xFF,0xE8,0x45,0x00, 0xFF,0xD5,0x2A,0x00, 0xFF,0xC2,0x0D,0x00, 0xFF,0xB9,0x00,0x00, 0xE1,0x9D,0x00,0x00, 0x9B,0x5D,0x00,0x00, 0x5C,0x21,0x00,0x00, 0x00,0xB2,0x94,0x00)
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent" -Name "AccentPalette"      -Value $palette -Type Binary -Force
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent" -Name "StartColorMenu"     -Value 0        -Type DWord  -Force
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent" -Name "AccentColorMenu"    -Value 0        -Type DWord  -Force
@@ -622,7 +628,7 @@ function Get-Default-Tweaks {
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\DWM" -Name "ColorizationColor"        -Value 0xc4191919 -Type DWord -Force
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\DWM" -Name "ColorizationAfterglow"    -Value 0xc4191919 -Type DWord -Force
 
-                    # Klasik Kontrol Paneli arka planlari (eski uygulamalar icin)
+                    # Klasik Kontrol Paneli arka planlari (eski uygulamalar icin) — siyah masaustu rengi
                     Set-ItemProperty -Path "HKCU:\Control Panel\Colors" -Name "Background" -Value "0 0 0" -Force
 
                     # === BOLUM 2: SIYAH WALLPAPER + KILIT EKRANI ===
@@ -647,9 +653,10 @@ function Get-Default-Tweaks {
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImagePath"   -Value $file -Type String -Force
                     Set-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Name "LockScreenImageStatus" -Value 1     -Type DWord  -Force
 
-                    # === BOLUM 3: MASAUSTU = DUZ RENK SIYAH + SPOTLIGHT KAPAT (kullanici istegi v1.2.2) ===
-                    # BackgroundType=1 -> duz renk modu. Renk Control Panel\Colors\Background="0 0 0" zaten siyah.
-                    # Kilit ekrani Black.jpg kullanir; masaustu wallpaper renk modu oldugu icin set edilmiyor.
+                    # === BOLUM 3: MASAUSTU = DUZ RENK SIYAH + SPOTLIGHT KAPAT (kullanici istegi) ===
+                    # BackgroundType=1 -> duz renk modu (Settings te "Duz renk" gorunur).
+                    # Renk = Control Panel\Colors\Background = "0 0 0" (siyah).
+                    # Wallpaper="" + SPI bos broadcast -> Win11 cache i wallpaper kaldirir, duz renk aktif olur.
                     if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers")) {
                         New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Force -ErrorAction SilentlyContinue | Out-Null
                     }
@@ -660,10 +667,8 @@ function Get-Default-Tweaks {
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Name "EnabledState" -Value 0 -Type DWord -Force -ErrorAction SilentlyContinue
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Name "SpotlightDisabledReason" -Value 100 -Type DWord -Force -ErrorAction SilentlyContinue
 
-                    # KRITIK: Win11 Wallpaper string i dolu ise BgType=1 ignore edilir, resim modu zorlanir.
-                    # Wallpaper registry yi BOSALT + SPI_SETDESKWALLPAPER bos string ile broadcast (Windows wallpaper i kaldirir).
+                    # Wallpaper kayit bos + SPI bos broadcast -> duz renk modu zorlanir
                     Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value "" -Type String -Force
-                    # SPI_SETDESKWALLPAPER=20, bos string, SPIF_UPDATEINIFILE|SPIF_SENDCHANGE=3 -> Windows wallpaper i kaldirir, duz renk modu aktif
                     [NativeMethods]::SystemParametersInfo(20, 0, "", 3) | Out-Null
 
                     rundll32.exe user32.dll, UpdatePerUserSystemParameters
@@ -680,7 +685,7 @@ function Get-Default-Tweaks {
                     # HKLM Personalize key sil (FR33THY: [-HKLM\...] ile siliniyor)
                     Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Themes\Personalize" -Recurse -Force -ErrorAction SilentlyContinue
 
-                    # Accent Palette default (mavi tonlari — FR33THY default)
+                    # Accent Palette default (mavi tonlari — FR33THY default, v1.2.3 geri eklendi)
                     if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent")) {
                         New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Accent" -Force -ErrorAction SilentlyContinue | Out-Null
                     }
@@ -701,19 +706,28 @@ function Get-Default-Tweaks {
                     Remove-Item -Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\PersonalizationCSP" -Recurse -Force -ErrorAction SilentlyContinue
                     Set-ItemProperty -Path "HKCU:\Control Panel\Desktop" -Name "Wallpaper" -Value "C:\Windows\Web\Wallpaper\Windows\img0.jpg" -Type String -Force -ErrorAction SilentlyContinue
 
-                    # === BOLUM 3: SPOTLIGHT TAM RESTORE (Karanlik Mod kapatti) ===
-                    # Eski Spotlight Kapat tweak Undo komutu ile birebir — eksik adim Spotlight gercekten geri acilmaz.
-                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 3 -Type DWord -Force -ErrorAction SilentlyContinue
+                    # === BOLUM 3: SPOTLIGHT TAM RESTORE ===
+                    # KRITIK BUG FIX (v1.2.3): Apply tarafinda SpotlightDisabledReason=100 set edilir.
+                    # Bu deger Windows e "kullanici Spotlight i kapatti" der -> Undo da BackgroundType=3 set etsek
+                    # bile Windows Spotlight i devreye sokmaz. Bu key i SILMEK kritik.
+                    Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Name "SpotlightDisabledReason" -Force -ErrorAction SilentlyContinue
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Settings" -Name "EnabledState" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight" -Name "ImagesUsed" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
                     if (-not (Test-Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Creatives")) {
                         New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Creatives" -Force -ErrorAction SilentlyContinue | Out-Null
                     }
                     Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\DesktopSpotlight\Creatives" -Name "ImageIndex" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
+                    # BackgroundType=3 (Spotlight modu) — Wallpaper kayitindan SONRA set
+                    Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Wallpapers" -Name "BackgroundType" -Value 3 -Type DWord -Force -ErrorAction SilentlyContinue
+
                     # AppXSvc restart — Spotlight servisinin yeni ayarlari yuklemesi icin gerekli
                     if (Get-Service "AppXSvc" -ErrorAction SilentlyContinue) {
                         Restart-Service "AppXSvc" -Force -ErrorAction SilentlyContinue
                     }
+
+                    # SPI_SETDESKWALLPAPER ile img0.jpg path broadcast — Win11 cache (Apply daki bos string) bypass.
+                    [NativeMethods]::SystemParametersInfo(20, 0, "C:\Windows\Web\Wallpaper\Windows\img0.jpg", 3) | Out-Null
 
                     rundll32.exe user32.dll, UpdatePerUserSystemParameters
                     Remove-Item -Path "C:\Windows\Black.jpg" -Force -ErrorAction SilentlyContinue
@@ -2998,7 +3012,7 @@ $xamlToolMgr = @"
 $xamlSettings = @"
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Program Ayarları" Height="830" Width="520"
+        Title="Program Ayarları" Height="930" Width="520"
         Background="#181818" WindowStartupLocation="CenterScreen" WindowStyle="ToolWindow" ResizeMode="NoResize">
     <Window.Resources>
         <Style TargetType="Button">
@@ -3012,9 +3026,10 @@ $xamlSettings = @"
             <RowDefinition Height="Auto"/> <!-- 1: Geliştirici -->
             <RowDefinition Height="Auto"/> <!-- 2: LİSTE YÖNETİMİ -->
             <RowDefinition Height="Auto"/> <!-- 3: SİSTEM GERİ YÜKLEME -->
-            <RowDefinition Height="Auto"/> <!-- 4: PROGRAM GÜNCELLEMESİ (YENİ) -->
-            <RowDefinition Height="*"/>    <!-- 5: Dosyalar -->
-            <RowDefinition Height="Auto"/> <!-- 6: Alt Butonlar -->
+            <RowDefinition Height="Auto"/> <!-- 4: PROGRAM GÜNCELLEMESİ -->
+            <RowDefinition Height="Auto"/> <!-- 5: GERİ BİLDİRİM (v1.2.3) -->
+            <RowDefinition Height="*"/>    <!-- 6: Dosyalar -->
+            <RowDefinition Height="Auto"/> <!-- 7: Alt Butonlar -->
         </Grid.RowDefinitions>
 
         <!-- 1. GÖRÜNÜM -->
@@ -3091,12 +3106,21 @@ $xamlSettings = @"
             </StackPanel>
         </Border>
 
-        <!-- 6. DOSYA YÖNETİMİ -->
-        <TextBlock Grid.Row="5" Text="Veri Dosyaları" Foreground="#CCC" FontWeight="Bold" Margin="0,0,0,5"/>
-        <ListBox x:Name="lstFiles" Grid.Row="5" Background="#1E1E1E" Foreground="White" BorderBrush="#444" SelectionMode="Extended" Margin="0,20,0,10"/>
+        <!-- 6. GERİ BİLDİRİM & İLETİŞİM (v1.2.3) -->
+        <Border Grid.Row="5" BorderBrush="#444" BorderThickness="1" CornerRadius="5" Padding="10" Margin="0,0,0,15" Background="#222">
+            <StackPanel>
+                <TextBlock Text="Geri Bildirim &amp; İletişim" Foreground="#4CC2FF" FontWeight="Bold" Margin="0,0,0,4"/>
+                <TextBlock Text="Hata bildir, öneri yap, ya da soru sor — Discord kanalına anonim olarak ulaşır." Foreground="#888" FontSize="11" Margin="0,0,0,8" TextWrapping="Wrap"/>
+                <Button x:Name="btnOpenFeedback" Content="💬 Geri Bildirim Gönder" Width="220" HorizontalAlignment="Left"/>
+            </StackPanel>
+        </Border>
 
-        <!-- 7. ALT BUTONLAR -->
-        <Grid Grid.Row="6">
+        <!-- 7. DOSYA YÖNETİMİ -->
+        <TextBlock Grid.Row="6" Text="Veri Dosyaları" Foreground="#CCC" FontWeight="Bold" Margin="0,0,0,5"/>
+        <ListBox x:Name="lstFiles" Grid.Row="6" Background="#1E1E1E" Foreground="White" BorderBrush="#444" SelectionMode="Extended" Margin="0,20,0,10"/>
+
+        <!-- 8. ALT BUTONLAR -->
+        <Grid Grid.Row="7">
             <Grid.ColumnDefinitions> <ColumnDefinition Width="Auto"/> <ColumnDefinition Width="*"/> <ColumnDefinition Width="Auto"/> </Grid.ColumnDefinitions>
             <Button x:Name="btnDeleteFiles" Grid.Column="0" Content="🗑 SEÇİLENLERİ SİL" Background="#A00" FontWeight="Bold"/>
             <StackPanel Grid.Column="2" Orientation="Horizontal">
@@ -3647,6 +3671,138 @@ $xamlCustomMgr = @"
     </Grid>
 </Window>
 "@
+# --- GERI BILDIRIM PENCERESI (v1.2.3) ---
+$xamlFeedback = @"
+<Window
+    xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
+    xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
+    Title='💬 Geri Bildirim Gönder' Height='560' Width='540'
+    Background='#181818' WindowStartupLocation='CenterScreen' WindowStyle='ToolWindow' ResizeMode='NoResize'>
+    <Window.Resources>
+        <!-- Ana pencereden birebir kopya — Silme Yontemi dropdown'u ile ayni stil -->
+        <ControlTemplate x:Key='ComboBoxToggleButton' TargetType='ToggleButton'>
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition Width='20' />
+                </Grid.ColumnDefinitions>
+                <Border x:Name='Border' Grid.ColumnSpan='2' CornerRadius='2' Background='#2D2D30' BorderBrush='#555' BorderThickness='1' />
+                <Path x:Name='Arrow' Grid.Column='1' Fill='White' HorizontalAlignment='Center' VerticalAlignment='Center' Data='M 0 0 L 4 4 L 8 0 Z'/>
+            </Grid>
+        </ControlTemplate>
+        <Style TargetType='ComboBox'>
+            <Setter Property='Foreground' Value='White'/>
+            <Setter Property='Background' Value='#2D2D30'/>
+            <Setter Property='BorderBrush' Value='#555'/>
+            <Setter Property='Template'>
+                <Setter.Value>
+                    <ControlTemplate TargetType='ComboBox'>
+                        <Grid>
+                            <ToggleButton Name='ToggleButton' Template='{StaticResource ComboBoxToggleButton}' Grid.Column='2' Focusable='false' IsChecked='{Binding Path=IsDropDownOpen,Mode=TwoWay,RelativeSource={RelativeSource TemplatedParent}}' ClickMode='Press'/>
+                            <ContentPresenter Name='ContentSite' IsHitTestVisible='False'  Content='{TemplateBinding SelectionBoxItem}' ContentTemplate='{TemplateBinding SelectionBoxItemTemplate}' ContentTemplateSelector='{TemplateBinding ItemTemplateSelector}' Margin='10,3,23,3' VerticalAlignment='Center' HorizontalAlignment='Left' />
+                            <TextBox x:Name='PART_EditableTextBox' Style='{x:Null}' Template='{x:Null}' HorizontalAlignment='Left' VerticalAlignment='Center' Margin='3,3,23,3' Focusable='True' Background='Transparent' Visibility='Hidden' IsReadOnly='{TemplateBinding IsReadOnly}'/>
+                            <Popup Name='Popup' Placement='Bottom' IsOpen='{TemplateBinding IsDropDownOpen}' AllowsTransparency='True' Focusable='False' PopupAnimation='Slide'>
+                                <Grid Name='DropDown' SnapsToDevicePixels='True' MinWidth='{TemplateBinding ActualWidth}' MaxHeight='{TemplateBinding MaxDropDownHeight}'>
+                                    <Border x:Name='DropDownBorder' Background='#252526' BorderThickness='1' BorderBrush='#555'/>
+                                    <ScrollViewer Margin='4,6,4,6' SnapsToDevicePixels='True'>
+                                        <StackPanel IsItemsHost='True' KeyboardNavigation.DirectionalNavigation='Contained' />
+                                    </ScrollViewer>
+                                </Grid>
+                            </Popup>
+                        </Grid>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <Style TargetType='ComboBoxItem'>
+            <Setter Property='Foreground' Value='White'/>
+            <Setter Property='Background' Value='Transparent'/>
+            <Setter Property='Padding' Value='5'/>
+            <Setter Property='Template'>
+                <Setter.Value>
+                    <ControlTemplate TargetType='ComboBoxItem'>
+                        <Border x:Name='Border' Background='{TemplateBinding Background}' Padding='{TemplateBinding Padding}'>
+                            <ContentPresenter />
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property='IsMouseOver' Value='True'>
+                                <Setter TargetName='Border' Property='Background' Value='#3E3E42'/>
+                            </Trigger>
+                            <Trigger Property='IsSelected' Value='True'>
+                                <Setter TargetName='Border' Property='Background' Value='#007ACC'/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </Window.Resources>
+    <Grid Margin='20'>
+        <Grid.RowDefinitions>
+            <RowDefinition Height='Auto'/>
+            <RowDefinition Height='Auto'/>
+            <RowDefinition Height='Auto'/>
+            <RowDefinition Height='Auto'/>
+            <RowDefinition Height='*'/>
+            <RowDefinition Height='Auto'/>
+            <RowDefinition Height='Auto'/>
+            <RowDefinition Height='Auto'/>
+            <RowDefinition Height='Auto'/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row='0' Text='Geri Bildirim Gönder' Foreground='White' FontSize='18' FontWeight='Bold' Margin='0,0,0,4'/>
+        <TextBlock Grid.Row='1' Text='Hata bildir, öneri yap, ya da soru sor — Discord kanalına anonim olarak gider.' Foreground='#888' FontSize='11' Margin='0,0,0,12' TextWrapping='Wrap'/>
+
+        <!-- TUR + BASLIK -->
+        <Grid Grid.Row='2' Margin='0,0,0,10'>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width='130'/>
+                <ColumnDefinition Width='*'/>
+            </Grid.ColumnDefinitions>
+            <ComboBox x:Name='cbFeedbackType' Grid.Column='0' Background='#222' Foreground='White' BorderBrush='#444' Padding='6' SelectedIndex='0'>
+                <ComboBoxItem Content='🐛 Hata' Tag='bug'/>
+                <ComboBoxItem Content='💡 Öneri' Tag='suggestion'/>
+                <ComboBoxItem Content='❓ Soru' Tag='question'/>
+            </ComboBox>
+            <TextBox x:Name='txtFeedbackTitle' Grid.Column='1' Margin='10,0,0,0' Background='#222' Foreground='White' BorderBrush='#444' Padding='6' Tag='Başlık (kısa, açıklayıcı)'/>
+        </Grid>
+
+        <!-- MESAJ ETIKETI -->
+        <TextBlock Grid.Row='3' Text='Mesaj (ne oldu, ne bekliyordun, adımlar):' Foreground='#CCC' FontSize='12' Margin='0,0,0,4'/>
+
+        <!-- MESAJ TEXTAREA -->
+        <TextBox x:Name='txtFeedbackBody' Grid.Row='4' Background='#222' Foreground='White' BorderBrush='#444' Padding='6'
+                 AcceptsReturn='True' TextWrapping='Wrap' VerticalScrollBarVisibility='Auto' MinHeight='160'/>
+
+        <!-- E-POSTA -->
+        <Grid Grid.Row='5' Margin='0,12,0,4'>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width='Auto'/>
+                <ColumnDefinition Width='*'/>
+            </Grid.ColumnDefinitions>
+            <TextBlock Grid.Column='0' Text='E-posta (opsiyonel):' Foreground='#CCC' FontSize='12' VerticalAlignment='Center' Margin='0,0,10,0'/>
+            <TextBox x:Name='txtFeedbackEmail' Grid.Column='1' Background='#222' Foreground='White' BorderBrush='#444' Padding='6'/>
+        </Grid>
+
+        <!-- SISTEM BILGILERI CHECKBOX -->
+        <CheckBox x:Name='chkIncludeSystem' Grid.Row='6' Foreground='#CCC' FontSize='12' IsChecked='True' Margin='0,8,0,0'>
+            <CheckBox.Content>
+                <TextBlock Text='Sistem bilgilerini ekle (Windows sürümü + MrClean sürümü + son 30 log satırı)' TextWrapping='Wrap'/>
+            </CheckBox.Content>
+        </CheckBox>
+
+        <!-- DURUM SATIRI -->
+        <TextBlock x:Name='lblFeedbackStatus' Grid.Row='7' Text='' Foreground='#888' FontSize='11' Margin='0,8,0,0' TextWrapping='Wrap'/>
+
+        <!-- BUTONLAR -->
+        <StackPanel Grid.Row='8' Orientation='Horizontal' HorizontalAlignment='Right' Margin='0,12,0,0'>
+            <Button x:Name='btnFeedbackCancel' Content='İptal' Background='#444' Foreground='White' Width='90' Height='32' Margin='0,0,8,0'/>
+            <Button x:Name='btnFeedbackSend' Content='📨 Gönder' Background='#0A6E0A' Foreground='White' Width='130' Height='32' FontWeight='Bold'/>
+        </StackPanel>
+    </Grid>
+</Window>
+"@
+
 $xamlAddCustom = @"
 
 <Window
@@ -4889,7 +5045,8 @@ function Invoke-AppUpdate {
     # 2. Asset'leri indir
     $downloads = @()
     if ($upd.ExeUrl) { $downloads += @{ Url = $upd.ExeUrl; Name = "TemizlikAsistani.exe"; Size = $upd.ExeSize } }
-    if ($upd.Ps1Url) { $downloads += @{ Url = $upd.Ps1Url; Name = "TemizlikAsistani.ps1"; Size = $upd.Ps1Size } }
+    # NOT (v1.2.3): PS1 dosyasi auto-update'te indirilmiyor. Release sayfasinda asset olarak yine var,
+    # kullanici manuel indirmek isterse oradan alabilir. Updater PS1 sadece EXE'yi swap eder.
 
     $stepBase = 10
     $stepRange = 70
@@ -9669,6 +9826,146 @@ function Show-Winapp2Editor {
     $winEd.ShowDialog() | Out-Null
 }
 
+# ---- GERI BILDIRIM (v1.2.3) ----
+# Send-Feedback: form alanlarindan + (opsiyonel) sistem bilgilerinden Discord embed JSON olustur, webhook'a POST.
+# JSON manuel string olarak compose ediliyor (PS5.1 ConvertTo-Json bazi nested array'leri yanlis serialize ediyor).
+function Send-Feedback {
+    param(
+        [Parameter(Mandatory=$true)] [string]$Type,    # bug | suggestion | question
+        [Parameter(Mandatory=$true)] [string]$Title,
+        [Parameter(Mandatory=$true)] [string]$Body,
+        [string]$Email = "",
+        [bool]$IncludeSystemInfo = $true
+    )
+
+    if ([string]::IsNullOrWhiteSpace($global:FeedbackWebhookUrl)) {
+        return @{ Success = $false; Error = "Webhook URL tanimli degil." }
+    }
+
+    # Tip mapping
+    $emoji = "🐛"; $color = 16711680  # bug = kirmizi
+    if ($Type -eq "suggestion") { $emoji = "💡"; $color = 3447003 }  # mavi
+    elseif ($Type -eq "question") { $emoji = "❓"; $color = 16776960 }  # sari
+    $typeLabel = if ($Type -eq "bug") { "Hata" } elseif ($Type -eq "suggestion") { "Öneri" } else { "Soru" }
+
+    # JSON-safe escape (control chars + quotes + backslash) -- String overload (Char overload bos string kabul etmez)
+    function _Esc($s) {
+        if ($null -eq $s) { return "" }
+        $r = $s.ToString()
+        $r = $r.Replace('\', '\\').Replace('"', '\"').Replace("`r", "").Replace("`n", '\n').Replace("`t", '\t')
+        return $r
+    }
+
+    $titleEsc = _Esc "$emoji [$typeLabel] $Title"
+    $bodyEsc  = _Esc $Body
+
+    # Embed fields — PowerShell single-quoted string + concatenation, double quote escape gerekmiyor
+    $fieldsArr = @()
+    if ($IncludeSystemInfo) {
+        # Win surumu
+        $winInfo = "?"
+        try {
+            $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+            if ($os) { $winInfo = "$($os.Caption) (Build $($os.BuildNumber))" }
+        } catch {}
+        $winEsc = _Esc $winInfo
+        $fieldsArr += '{"name":"Windows","value":"' + $winEsc + '","inline":true}'
+
+        # MrClean surumu
+        $verEsc = _Esc "v$($global:AppVersion)"
+        $fieldsArr += '{"name":"MrClean","value":"' + $verEsc + '","inline":true}'
+
+        # Son 30 log satiri
+        try {
+            $logLines = @()
+            if ($txtLog -and $txtLog.Text) {
+                $allLines = $txtLog.Text -split "`r?`n"
+                $tail = $allLines | Select-Object -Last 30
+                $logLines = $tail | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+            }
+            if ($logLines.Count -gt 0) {
+                $logText = ($logLines -join "`n")
+                # Discord field max 1024 char (markdown code block ile birlikte)
+                if ($logText.Length -gt 980) { $logText = $logText.Substring(0, 980) + "..." }
+                $logWithFences = "``````" + "`n" + $logText + "`n" + "``````"
+                $logEsc = _Esc $logWithFences
+                $fieldsArr += '{"name":"Son log satirlari","value":"' + $logEsc + '","inline":false}'
+            }
+        } catch {}
+    }
+    if (-not [string]::IsNullOrWhiteSpace($Email)) {
+        $emailEsc = _Esc $Email
+        $fieldsArr += '{"name":"E-posta","value":"' + $emailEsc + '","inline":false}'
+    }
+
+    $fieldsJson = if ($fieldsArr.Count -gt 0) { ',"fields":[' + ($fieldsArr -join ',') + ']' } else { '' }
+    $tsIso = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fffZ")
+
+    # Final embed JSON (manuel compose — single-quoted concatenation, escape derdi yok)
+    $payload = '{"embeds":[{"title":"' + $titleEsc + '","description":"' + $bodyEsc + '","color":' + $color + $fieldsJson + ',"timestamp":"' + $tsIso + '"}]}'
+
+    try {
+        # KRITIK: PS5.1 Invoke-RestMethod string body'i ANSI olarak encode eder.
+        # Turkce/emoji karakterler bozulur -> Discord 400 "Bad Request". UTF-8 byte array zorunlu.
+        $payloadBytes = [System.Text.Encoding]::UTF8.GetBytes($payload)
+        Invoke-RestMethod -Uri $global:FeedbackWebhookUrl -Method Post -Body $payloadBytes -ContentType 'application/json; charset=utf-8' -ErrorAction Stop | Out-Null
+        return @{ Success = $true }
+    } catch {
+        return @{ Success = $false; Error = $_.Exception.Message }
+    }
+}
+
+# Show-FeedbackWindow: modal form'u acar
+function Show-FeedbackWindow {
+    try {
+        $reader = New-Object System.Xml.XmlNodeReader ([xml]$xamlFeedback)
+        $winFb = [Windows.Markup.XamlReader]::Load($reader)
+
+        $cb       = $winFb.FindName('cbFeedbackType')
+        $title    = $winFb.FindName('txtFeedbackTitle')
+        $body     = $winFb.FindName('txtFeedbackBody')
+        $email    = $winFb.FindName('txtFeedbackEmail')
+        $chkSys   = $winFb.FindName('chkIncludeSystem')
+        $lblStat  = $winFb.FindName('lblFeedbackStatus')
+        $btnSend  = $winFb.FindName('btnFeedbackSend')
+        $btnCanc  = $winFb.FindName('btnFeedbackCancel')
+
+        $btnCanc.Add_Click({ $winFb.Close() })
+
+        $btnSend.Add_Click({
+            $titleVal = $title.Text.Trim()
+            $bodyVal  = $body.Text.Trim()
+            if ([string]::IsNullOrWhiteSpace($titleVal) -or $titleVal.Length -lt 3) {
+                $lblStat.Foreground = '#FF6B6B'; $lblStat.Text = "Başlık en az 3 karakter olmalı."; return
+            }
+            if ([string]::IsNullOrWhiteSpace($bodyVal) -or $bodyVal.Length -lt 10) {
+                $lblStat.Foreground = '#FF6B6B'; $lblStat.Text = "Mesaj en az 10 karakter olmalı."; return
+            }
+
+            $tag = ($cb.SelectedItem.Tag).ToString()
+            $btnSend.IsEnabled = $false; $btnCanc.IsEnabled = $false
+            $lblStat.Foreground = '#888'; $lblStat.Text = "Gönderiliyor..."
+            Do-Events
+
+            $result = Send-Feedback -Type $tag -Title $titleVal -Body $bodyVal -Email $email.Text.Trim() -IncludeSystemInfo $chkSys.IsChecked
+
+            if ($result.Success) {
+                $lblStat.Foreground = '#90EE90'; $lblStat.Text = "✅ Gönderildi. Teşekkürler!"
+                $btnSend.Content = "✅ Gönderildi"
+                Start-Sleep -Milliseconds 1500
+                $winFb.Close()
+            } else {
+                $lblStat.Foreground = '#FF6B6B'; $lblStat.Text = "❌ Hata: $($result.Error)"
+                $btnSend.IsEnabled = $true; $btnCanc.IsEnabled = $true
+            }
+        })
+
+        $winFb.ShowDialog() | Out-Null
+    } catch {
+        WpfLog "[HATA] Geri Bildirim penceresi: $($_.Exception.Message)"
+    }
+}
+
 # ---- Show-AppUpdateWindow (Otomatik program guncellemesi, Show-UpdateWindow Winapp2 icin) ----
 function Show-AppUpdateWindow {
     if (-not $global:UpdateAvailable) {
@@ -13279,6 +13576,12 @@ $btnSettings.Add_Click({
         $txtUpdateStatus   = $winSet.FindName('txtUpdateStatus')
         $btnCheckUpdate    = $winSet.FindName('btnCheckUpdate')
         $btnOpenReleases   = $winSet.FindName('btnOpenReleases')
+
+        # === GERİ BİLDİRİM — yeni v1.2.3 ===
+        $btnOpenFeedback   = $winSet.FindName('btnOpenFeedback')
+        if ($btnOpenFeedback) {
+            $btnOpenFeedback.Add_Click({ Show-FeedbackWindow })
+        }
 
         # Versiyonlari doldur
         $txtCurrentVersion.Text = "v$($global:AppVersion)"
