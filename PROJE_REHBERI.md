@@ -531,7 +531,7 @@ Bir fonksiyon/özelliği değiştirmek için:
 
 **Çalışılan klasör:** `C:\Users\zeugmass\Desktop\TEST2\` (master), `C:\Users\zeugmass\Desktop\MrClean\` (git repo, yerel build/test) *(eski adı `GeminiSystemCare` — rebrand ile rename edildi)*
 
-**Mevcut sürüm:** `$global:AppVersion = "1.2.2"` — production-stable, GitHub'da yayında ([release](https://github.com/zeugmass/MrClean/releases/tag/v1.2.2)). Tüm ana akışlar kullanıcı tarafından test edildi.
+**Mevcut sürüm:** `$global:AppVersion = "1.2.3"` — production-stable, GitHub'da yayında ([release](https://github.com/zeugmass/MrClean/releases/tag/v1.2.3)). Geri Bildirim sistemi + Karanlık Mod düz renk + sarı palette + ComboBox dropdown fix.
 
 **GitHub repo:** `zeugmass/MrClean` (public)
 
@@ -545,18 +545,34 @@ Bir fonksiyon/özelliği değiştirmek için:
 
 **Bilinen iyileştirme borcu (kayıt):**
 - W1 — Refresh-Winget-Status async: v1.2.2'de denendi (DispatcherTimer + runspace pool), detected list boş döndü, sync revert edildi. Hashtable arg geçişi veya scope sorunu olduğu sanılıyor — doğru debug ile gelecek sprint'te düzeltilebilir. Şu an sync 3-5 sn UI donmuyor (`Do-Events` yumuşatıyor).
-- Karanlık Mod Undo'da Spotlight tam görünür olmayabilir: Win11 Wallpaper="img0.jpg" dolu olduğunda BgType otomatik 0'a düşüyor. Apply'daki "Wallpaper="" + SPI_SETDESKWALLPAPER" pattern'i Undo'da da uygulanabilir ileride.
+- Karanlık Mod Undo'da gerçek Windows Spotlight wallpaper modu yerine resim modu (img0.jpg) görünür. Sebep: `SystemParametersInfo`'ya path geçirildiğinde Win11 BackgroundType=3'ü ignore edip resim modunu zorluyor. Çözüm araştırması: `ms-settings:personalization-background` URI tetiklemek veya farklı Win32 API.
+- Build-Local.ps1 Spotlight cache reset helper (Win11 wallpaper cache temizleme komutu — test sırasında state bozulduğunda manuel düzeltme yerine).
 
-**v1.2.0 release durumu:** GitHub'da yayında ama bug'lı (PS1 v1.0.6 ile compile → loop). **Öneri:** GitHub UI'dan v1.2.0 + diğer eski release'leri sil/draft'a çek (v1.2.2 latest olarak kalır).
+**v1.2.0 release durumu:** GitHub'da yayında ama bug'lı (PS1 v1.0.6 ile compile → loop). **Öneri:** GitHub UI'dan v1.2.0 + diğer eski release'leri sil/draft'a çek (v1.2.3 latest olarak kalır).
 
-**Son user feedback:** v1.2.2 yayında ve sorunsuz çalışıyor (2026-05-03). Auto-update loop yok, Winget kurulum/kaldırma güvenli, Karanlık Mod düz renk modunda.
+**Son user feedback:** v1.2.3 yayında ve sorunsuz çalışıyor (2026-05-03). Geri Bildirim sistemi Discord'a düzgün gönderiyor, Karanlık Mod Apply düz renk siyah, Undo resim modu (Windows logo).
 
 **Sıradaki adım (yeni pencerede):**
 - Yeni özellik/fix istek varsa: TEST2'de değişiklik yap → AppVersion bump (workflow check zorunlu) → Build-Local.ps1 ile test et → push
 - v1.2.0 release temizliği (manuel GitHub UI'dan)
 - W1 (Winget refresh async) ileride yeniden ele alınacak
+- Karanlık Mod Undo Spotlight tam geçişi (yukarıdaki iyileştirme borcu)
 
-**⚠️ Apostrof kuralı (sentaks tuzağı — v1.2.2 sırasında 2 kez tökezleyildi):** Tek tırnaklı here-string'ler içinde (Command/UndoCommand/DetectScript) Türkçe apostrof (örn. `wallpaper'inde`, `tweak'in`) **yasak** — string'i kapatır, sentaks bozar. `''` ile escape edilebilir veya kullanılmamalı.
+**🚨 APOSTROF KURALI — KRİTİK SENTAKS TUZAĞI:**
+
+Tek tırnaklı here-string'ler içinde (`Command='...'`, `UndoCommand='...'`, `DetectScript='...'`, `Description="..."` -- aslında çift tırnak da olabilir ama içindeki PowerShell var-string'leri tek tırnaklı oluyor) **Türkçe apostrof YASAK**.
+
+**Sebep:** PowerShell `'` karakterini string sonu olarak yorumlar. `Apply'da` yazınca `Apply'` string sonu, `da` literal kelime → "Unexpected token" cascade hatası.
+
+**Tetikleyici örnekler (v1.2.2 + v1.2.3'te toplam 6+ kez tökezlendi):**
+- `Apply'da` → `Apply tarafinda`
+- `Win11'in` → `Win11 cache i`
+- `wallpaper'inde` → `wallpaper kayitinda`
+- `tweak'in` → `tweak komutu`
+- `registry'den` → `registry verisi`
+- `LERİ'NDE` → `LERINDE`
+
+**Defansif kural:** Yeni Tweak Command/UndoCommand/Description yazarken yorumlarda **apostrofsuz cümle kur**. Türkçe apostrof yerine kelimeyi yeniden yapılandır. `''` ile escape mümkün ama okunamaz, hatırlanamaz, hep apostrofsuz yaz.
 
 **Repo dosyaları:**
 - `TemizlikAsistani.ps1` — ana script (~14K satır, 1 MB) — region 1-15 yapısı
