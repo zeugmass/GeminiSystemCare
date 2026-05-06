@@ -121,15 +121,94 @@ public class SecureWiper {
 }
 
 public class RamCleaner {
+    // Working Set boşaltma (process-level)
     [DllImport("psapi.dll")]
     public static extern bool EmptyWorkingSet(IntPtr hProcess);
 
-    public static int CleanAll() {
-        int count = 0;
-        foreach (Process p in Process.GetProcesses()) {
-            try { EmptyWorkingSet(p.Handle); count++; } catch {}
+    // System-wide memory list manipulation (Standby Memory + Modified Pages purge)
+    [DllImport("ntdll.dll")]
+    public static extern int NtSetSystemInformation(int InfoClass, IntPtr Info, int Length);
+
+    // Token + privilege adjustment (SeProfileSingleProcessPrivilege gerekli — admin process bile default'ta enable değil)
+    [DllImport("advapi32.dll", SetLastError = true)]
+    public static extern bool OpenProcessToken(IntPtr ProcessHandle, uint DesiredAccess, out IntPtr TokenHandle);
+
+    [DllImport("advapi32.dll", SetLastError = true, CharSet = CharSet.Auto)]
+    public static extern bool LookupPrivilegeValue(string lpSystemName, string lpName, out long lpLuid);
+
+    [DllImport("advapi32.dll", SetLastError = true)]
+    public static extern bool AdjustTokenPrivileges(IntPtr TokenHandle, bool DisableAllPrivileges,
+        ref TOKEN_PRIVILEGES NewState, uint BufferLength, IntPtr PreviousState, IntPtr ReturnLength);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern IntPtr GetCurrentProcess();
+
+    [DllImport("kernel32.dll")]
+    public static extern bool CloseHandle(IntPtr hObject);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct LUID_AND_ATTRIBUTES { public long Luid; public uint Attributes; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct TOKEN_PRIVILEGES { public uint PrivilegeCount; public LUID_AND_ATTRIBUTES Privileges; }
+
+    private const uint TOKEN_ADJUST_PRIVILEGES = 0x20;
+    private const uint TOKEN_QUERY = 0x8;
+    private const uint SE_PRIVILEGE_ENABLED = 0x2;
+
+    // SystemMemoryListInformation = 80
+    // MemoryListCommand: PurgeStandbyList = 4, PurgeLowPriorityStandbyList = 5, FlushModifiedList = 3, EmptyWorkingSets = 2
+    private const int SystemMemoryListInformation = 80;
+    private const int MemoryEmptyWorkingSets = 2;
+    private const int MemoryFlushModifiedList = 3;
+    private const int MemoryPurgeStandbyList = 4;
+
+    private static bool EnablePrivilege(string privName) {
+        IntPtr hToken;
+        if (!OpenProcessToken(GetCurrentProcess(), TOKEN_ADJUST_PRIVILEGES | TOKEN_QUERY, out hToken)) return false;
+        try {
+            long luid;
+            if (!LookupPrivilegeValue(null, privName, out luid)) return false;
+            TOKEN_PRIVILEGES tp = new TOKEN_PRIVILEGES();
+            tp.PrivilegeCount = 1;
+            tp.Privileges.Luid = luid;
+            tp.Privileges.Attributes = SE_PRIVILEGE_ENABLED;
+            return AdjustTokenPrivileges(hToken, false, ref tp, 0, IntPtr.Zero, IntPtr.Zero);
+        } finally {
+            CloseHandle(hToken);
         }
-        return count;
+    }
+
+    private static int InvokeMemoryListCommand(int command) {
+        IntPtr cmdPtr = Marshal.AllocHGlobal(sizeof(int));
+        try {
+            Marshal.WriteInt32(cmdPtr, command);
+            return NtSetSystemInformation(SystemMemoryListInformation, cmdPtr, sizeof(int));
+        } finally {
+            Marshal.FreeHGlobal(cmdPtr);
+        }
+    }
+
+    public static int CleanAll() {
+        // 1) Working Set: her process icin (admin olmayan dahil)
+        int wsCount = 0;
+        foreach (Process p in Process.GetProcesses()) {
+            try { EmptyWorkingSet(p.Handle); wsCount++; } catch {}
+        }
+
+        // 2) System-wide memory list operations (admin + SeProfileSingleProcessPrivilege gerek)
+        // RAMMap-style: Standby Memory + Modified Pages temizle
+        try { EnablePrivilege("SeProfileSingleProcessPrivilege"); } catch {}
+        try { EnablePrivilege("SeIncreaseQuotaPrivilege"); } catch {}
+
+        // Modified pages diske flush (bu olmadan standby purge eksik kalir)
+        try { InvokeMemoryListCommand(MemoryFlushModifiedList); } catch {}
+        // Standby memory listesini bosalt (en buyuk kazanim — RAMMap'in "Empty Standby List")
+        try { InvokeMemoryListCommand(MemoryPurgeStandbyList); } catch {}
+        // System-wide working sets bosalt (per-process EmptyWorkingSet'ten daha kapsamli)
+        try { InvokeMemoryListCommand(MemoryEmptyWorkingSets); } catch {}
+
+        return wsCount;
     }
 }
 
@@ -354,7 +433,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.2.3"
+$global:AppVersion = "1.2.6"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/MrClean"
@@ -1472,28 +1551,73 @@ function Get-Default-Tweaks {
             }
         )
         
-        # --- 8. AĞ VE DNS ---
+        # --- 8. AĞ VE DNS (v1.2.5: netsh tabanli — PowerShell Set-DnsClientServerAddress Win11 de bazen
+        # TCP/IPv4 Properties dialog'unda "otomatik" gosteriyordu, netsh source=static|dhcp daha guvenilir) ---
         "Ağ ve DNS Ayarları" = @(
-            @{ 
+            @{
                 Name="DNS: Google (Hız ve Kararlılık)";
                 Group="DNS";
-                Command="Get-NetAdapter | Where Status -eq Up | Set-DnsClientServerAddress -ServerAddresses ('8.8.8.8', '8.8.4.4', '2001:4860:4860::8888', '2001:4860:4860::8844') -ErrorAction SilentlyContinue; ipconfig /flushdns > `$null"; 
-                UndoCommand="Get-NetAdapter | Where Status -eq Up | Set-DnsClientServerAddress -ResetServerAddresses -ErrorAction SilentlyContinue; ipconfig /flushdns > `$null"; 
-                RestartExplorer=$false 
+                Command='
+                    $adapters = Get-NetAdapter | Where-Object Status -eq Up
+                    foreach ($a in $adapters) {
+                        $name = $a.Name
+                        & netsh interface ipv4 set dnsservers name="$name" source=static address=8.8.8.8 register=primary validate=no | Out-Null
+                        & netsh interface ipv4 add dnsservers name="$name" address=8.8.4.4 index=2 validate=no | Out-Null
+                        & netsh interface ipv6 set dnsservers name="$name" source=static address=2001:4860:4860::8888 register=primary validate=no | Out-Null
+                        & netsh interface ipv6 add dnsservers name="$name" address=2001:4860:4860::8844 index=2 validate=no | Out-Null
+                    }
+                    ipconfig /flushdns > $null
+                ';
+                UndoCommand='
+                    $adapters = Get-NetAdapter | Where-Object Status -eq Up
+                    foreach ($a in $adapters) {
+                        $name = $a.Name
+                        & netsh interface ipv4 set dnsservers name="$name" source=dhcp | Out-Null
+                        & netsh interface ipv6 set dnsservers name="$name" source=dhcp | Out-Null
+                    }
+                    ipconfig /flushdns > $null
+                ';
+                RestartExplorer=$false
             },
-            @{ 
+            @{
                 Name="DNS: Cloudflare (Gizlilik ve Hız)";
                 Group="DNS";
-                Command="Get-NetAdapter | Where Status -eq Up | Set-DnsClientServerAddress -ServerAddresses ('1.1.1.1', '1.0.0.1', '2606:4700:4700::1111', '2606:4700:4700::1001') -ErrorAction SilentlyContinue; ipconfig /flushdns > `$null"; 
-                UndoCommand="Get-NetAdapter | Where Status -eq Up | Set-DnsClientServerAddress -ResetServerAddresses -ErrorAction SilentlyContinue; ipconfig /flushdns > `$null"; 
-                RestartExplorer=$false 
+                Command='
+                    $adapters = Get-NetAdapter | Where-Object Status -eq Up
+                    foreach ($a in $adapters) {
+                        $name = $a.Name
+                        & netsh interface ipv4 set dnsservers name="$name" source=static address=1.1.1.1 register=primary validate=no | Out-Null
+                        & netsh interface ipv4 add dnsservers name="$name" address=1.0.0.1 index=2 validate=no | Out-Null
+                        & netsh interface ipv6 set dnsservers name="$name" source=static address=2606:4700:4700::1111 register=primary validate=no | Out-Null
+                        & netsh interface ipv6 add dnsservers name="$name" address=2606:4700:4700::1001 index=2 validate=no | Out-Null
+                    }
+                    ipconfig /flushdns > $null
+                ';
+                UndoCommand='
+                    $adapters = Get-NetAdapter | Where-Object Status -eq Up
+                    foreach ($a in $adapters) {
+                        $name = $a.Name
+                        & netsh interface ipv4 set dnsservers name="$name" source=dhcp | Out-Null
+                        & netsh interface ipv6 set dnsservers name="$name" source=dhcp | Out-Null
+                    }
+                    ipconfig /flushdns > $null
+                ';
+                RestartExplorer=$false
             },
-            @{ 
+            @{
                 Name="DNS: Otomatik (Varsayılan / İSS)";
                 Group="DNS";
-                Command="Get-NetAdapter | Where Status -eq Up | Set-DnsClientServerAddress -ResetServerAddresses -ErrorAction SilentlyContinue; ipconfig /flushdns > `$null"; 
-                UndoCommand=""; 
-                RestartExplorer=$false 
+                Command='
+                    $adapters = Get-NetAdapter | Where-Object Status -eq Up
+                    foreach ($a in $adapters) {
+                        $name = $a.Name
+                        & netsh interface ipv4 set dnsservers name="$name" source=dhcp | Out-Null
+                        & netsh interface ipv6 set dnsservers name="$name" source=dhcp | Out-Null
+                    }
+                    ipconfig /flushdns > $null
+                ';
+                UndoCommand="";
+                RestartExplorer=$false
             }
         )
 
@@ -5619,14 +5743,17 @@ function Get-Tweak-IsActive($tweak) {
 			
             # NOT: Spotlight tweak'i Karanlik Mod'a entegre edildi (v1.2.2). Status check kaldirildi.
 
-            if ($tweak.Command -match "Set-DnsClientServerAddress") {
+            # DNS detection — hem eski (Set-DnsClientServerAddress) hem yeni (netsh) tweak'leri tanir.
+            if ($tweak.Command -match "Set-DnsClientServerAddress" -or $tweak.Command -match "netsh interface ipv\d set dnsservers") {
                 $activeAdapters = Get-NetAdapter | Where-Object { $_.Status -eq "Up" }
                 $currentDNS = $activeAdapters | Get-DnsClientServerAddress | Where-Object { $_.AddressFamily -eq 2 } | Select-Object -ExpandProperty ServerAddresses
-                if ($tweak.Command -match "'(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})'") {
+                # IP literali ara: PowerShell '8.8.8.8' VEYA netsh address=8.8.8.8 formatlari
+                if ($tweak.Command -match "(?:'|address=)(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})") {
                     $targetIP = $Matches[1]
                     if ($currentDNS -contains $targetIP) { return $true }
                 }
-                elseif ($tweak.Command -match "-ResetServerAddresses") {
+                # Reset detection: PowerShell -ResetServerAddresses VEYA netsh source=dhcp
+                elseif ($tweak.Command -match "-ResetServerAddresses|source=dhcp") {
                     $knownManuals = @("8.8.8.8", "8.8.4.4", "1.1.1.1", "1.0.0.1")
                     $isManualFound = $false
                     foreach ($ip in $currentDNS) { if ($knownManuals -contains $ip) { $isManualFound = $true } }
@@ -6130,6 +6257,15 @@ function Apply-System-Tweaks {
         Invoke-ShellSoftRefresh
     }
 
+    # 1b) Dashboard refresh — DNS/network tweak'leri Genel Bakis sekmesindeki Aktif DNS metnini etkiler.
+    # KRITIK: Load-DashboardData 5 DAKIKA cache kullaniyor (L11005). Tweak sonrasi cache eski DNS donuyor.
+    # v1.2.6: Onceki versiyonda tabDashboard.IsSelected check'i vardi — kullanici Tweaks tab'da Apply ederken
+    # bu false donuyor, Load-DashboardData hic cagrilmiyordu. Cozum: garantili tetikle (runspace arka planda
+    # calisir, tab acik degilse de cache yenilenir, kullanici Dashboard'a gecince taze veri hazir olur).
+    $global:DashCache = $null
+    $global:DashCacheTime = $null
+    try { Load-DashboardData } catch { WpfLog "[HATA] Dashboard refresh: $($_.Exception.Message)" }
+
     # 2) Restart dialog — latencyChanged en agir, sonra hard restart, sonra hicbir sey
     if ($script:latencyChanged) {
         Show-RestartDialog
@@ -6518,15 +6654,43 @@ function Show-TweakManager {
 
             # --- TÜR-BAZLI ALANLAR ---
             if ($rbDns.IsChecked) {
-                $ipList = @(); if ($txtDns1.Text) { $ipList += "'$($txtDns1.Text)'" }; if ($txtDns2.Text) { $ipList += "'$($txtDns2.Text)'" }
-                if ($chkDnsIPv6.IsChecked) { if ($txtDns6_1.Text) { $ipList += "'$($txtDns6_1.Text)'" }; if ($txtDns6_2.Text) { $ipList += "'$($txtDns6_2.Text)'" } }
-                if ($ipList.Count -lt 2) {
-                    [System.Windows.MessageBox]::Show("DNS için en az 2 sunucu adresi gerekir.", "DNS", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
+                # v1.2.5: netsh tabanli DNS set (Set-DnsClientServerAddress yerine — Win11 daha guvenilir).
+                # IPv4 ve IPv6 ayri komutlarla, source=static persistent registry kaydi.
+                $v4Primary = $txtDns1.Text; $v4Secondary = $txtDns2.Text
+                $v6Primary = $null; $v6Secondary = $null
+                if ($chkDnsIPv6.IsChecked) { $v6Primary = $txtDns6_1.Text; $v6Secondary = $txtDns6_2.Text }
+                if ([string]::IsNullOrWhiteSpace($v4Primary) -or [string]::IsNullOrWhiteSpace($v4Secondary)) {
+                    [System.Windows.MessageBox]::Show("DNS için en az 2 IPv4 sunucu adresi gerekir.", "DNS", [System.Windows.MessageBoxButton]::OK, [System.Windows.MessageBoxImage]::Warning) | Out-Null
                     return
                 }
-                $ipString = $ipList -join ", "
-                $newObj["Command"]     = "Get-NetAdapter | Where Status -eq Up | Set-DnsClientServerAddress -ServerAddresses ($ipString) -ErrorAction SilentlyContinue; ipconfig /flushdns > `$null"
-                $newObj["UndoCommand"] = "Get-NetAdapter | Where Status -eq Up | Set-DnsClientServerAddress -ResetServerAddresses -ErrorAction SilentlyContinue; ipconfig /flushdns > `$null"
+
+                # Apply komutu insa et — netsh ile tum aktif adapter'lara
+                $applyLines = @(
+                    '$adapters = Get-NetAdapter | Where-Object Status -eq Up'
+                    'foreach ($a in $adapters) {'
+                    '    $name = $a.Name'
+                    "    & netsh interface ipv4 set dnsservers name=`"`$name`" source=static address=$v4Primary register=primary validate=no | Out-Null"
+                    "    & netsh interface ipv4 add dnsservers name=`"`$name`" address=$v4Secondary index=2 validate=no | Out-Null"
+                )
+                if ($v6Primary) {
+                    $applyLines += "    & netsh interface ipv6 set dnsservers name=`"`$name`" source=static address=$v6Primary register=primary validate=no | Out-Null"
+                }
+                if ($v6Secondary) {
+                    $applyLines += "    & netsh interface ipv6 add dnsservers name=`"`$name`" address=$v6Secondary index=2 validate=no | Out-Null"
+                }
+                $applyLines += '}'
+                $applyLines += 'ipconfig /flushdns > $null'
+                $newObj["Command"] = ($applyLines -join "`n")
+
+                $newObj["UndoCommand"] = @'
+$adapters = Get-NetAdapter | Where-Object Status -eq Up
+foreach ($a in $adapters) {
+    $name = $a.Name
+    & netsh interface ipv4 set dnsservers name="$name" source=dhcp | Out-Null
+    & netsh interface ipv6 set dnsservers name="$name" source=dhcp | Out-Null
+}
+ipconfig /flushdns > $null
+'@
                 $newObj["RestartExplorer"] = $false
             } elseif ($rbReg.IsChecked) {
                 # Registry validation
@@ -11085,13 +11249,17 @@ function Load-DashboardData {
                 }
             }
         } catch {}
-		# --- 12. AKTİF DNS (Modem veya Windows) ---
+		# --- 12. AKTİF DNS (v1.2.6: WMI yerine Get-DnsClientServerAddress — netsh ile set edilen DNS i de gorur) ---
+        # WMI Win32_NetworkAdapterConfiguration.DNSServerSearchOrder cache'inden okurdu, netsh sonrasi stale kalabiliyordu.
+        # Get-DnsClientServerAddress live DNS Client query'si yapar, IPv4 (AddressFamily=2) ile filtreli.
         $activeDns = "Bilinmiyor"
         try {
-            $netConfigs = Get-CimInstance Win32_NetworkAdapterConfiguration -CimSession $cim -Filter "IPEnabled = True" -ErrorAction SilentlyContinue
+            $upAdapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Up" -and $_.InterfaceAlias -notmatch "Loopback|VPN|Virtual|Tunnel|Hyper-V" }
             $dnsList = @()
-            foreach ($net in $netConfigs) {
-                if ($net.DNSServerSearchOrder) { $dnsList += $net.DNSServerSearchOrder }
+            foreach ($a in $upAdapters) {
+                $dns = Get-DnsClientServerAddress -InterfaceAlias $a.InterfaceAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                       Select-Object -ExpandProperty ServerAddresses -ErrorAction SilentlyContinue
+                if ($dns) { $dnsList += $dns }
             }
             if ($dnsList.Count -gt 0) { $activeDns = ($dnsList | Select-Object -Unique) -join ", " }
         } catch {}
@@ -12977,6 +13145,20 @@ $btnPingTest.Add_Click({
     $txtPingCF.Text     = "Cloudflare ..."
     $txtPingGW.Text     = "Ağ Geçidi ..."
 
+    # v1.2.6: Test Et basinca Aktif DNS metnini de fresh oku (Apply'dan sonra cache stale kalabilir)
+    try {
+        $upAdapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Up" -and $_.InterfaceAlias -notmatch "Loopback|VPN|Virtual|Tunnel|Hyper-V" }
+        $dnsList = @()
+        foreach ($a in $upAdapters) {
+            $dns = Get-DnsClientServerAddress -InterfaceAlias $a.InterfaceAlias -AddressFamily IPv4 -ErrorAction SilentlyContinue |
+                   Select-Object -ExpandProperty ServerAddresses -ErrorAction SilentlyContinue
+            if ($dns) { $dnsList += $dns }
+        }
+        if ($dnsList.Count -gt 0) {
+            $txtDashDNS.Text = ($dnsList | Select-Object -Unique) -join ", "
+        }
+    } catch {}
+
     $script:PingRS = [powershell]::Create()
     $script:PingRS.AddScript({
         function Ping-IP([string]$ip, [int]$count=4) {
@@ -13506,14 +13688,23 @@ $btnWingetUpdateAll.Add_Click({
     
     # Çalıştırılacak kod bloğu
     $s = @'
+    # KRITIK (v1.2.4): winget UTF-8 cikti yazar, encoding ayari olmadan misencode olur (Ôûê garbage).
+    # Worker wrapper encoding'i runspace ana scope, ScriptBlock burada kendi scope'unda calisiyor.
+    try { [Console]::OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+    try { $OutputEncoding = [System.Text.Encoding]::UTF8 } catch {}
+
     $w='winget'; if(Test-Path "$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe"){$w="$env:LOCALAPPDATA\Microsoft\WindowsApps\winget.exe"}
 
-    # --- FİLTRELEME FONKSİYONU ---
+    # --- FİLTRELEME FONKSİYONU (v1.2.4 — KB/MB pattern fallback + misencoded char regex) ---
     function Process-Output($line) {
         $clean = $line.ToString().Trim()
         if (-not [string]::IsNullOrWhiteSpace($clean)) {
-            # Progress barlarını ve anlamsız KB/MB yazılarını gizle
-            if ($clean -match '^[█▒\|\/\\\-\s\d\.]+(KB|MB|%)*') { return }
+            # Progress bar satirlari (encoding ne olursa olsun "X KB / Y MB" pattern'i yakalar)
+            if ($clean -match '\d+(\.\d+)?\s*(KB|MB|GB)\s*\/\s*\d+(\.\d+)?\s*(KB|MB|GB)') { return }
+            # Yuzde ile biten progress satirlari
+            if ($clean -match '\s+\d+%\s*$') { return }
+            # Saf progress char dolgu satirlari (UTF-8 dogru veya misencoded)
+            if ($clean -match '^[█▒░â–ˆÔûêÔûÆ|/\\\-\s\d\.]+$') { return }
             Log ">> $clean"
         }
     }
@@ -13881,8 +14072,10 @@ $btnCleanRAM.Add_Click({
     [System.GC]::WaitForPendingFinalizers()
 
     # 3. GÜNCELLEME İÇİN BEKLEME (UI'yi dondurmadan)
+    # 1500ms — Standby memory purge + page list flush sonrasi sistemin stabilize olma suresi.
+    # 700ms cok kisa idi, anlik degerle Sistem Ozeti'nin polling degeri arasinda farklilik olusuyordu.
     $script:RamEffectTimer = New-Object System.Windows.Threading.DispatcherTimer
-    $script:RamEffectTimer.Interval =[TimeSpan]::FromMilliseconds(700)
+    $script:RamEffectTimer.Interval =[TimeSpan]::FromMilliseconds(1500)
     $script:RamEffectTimer.Add_Tick({
         $script:RamEffectTimer.Stop()
 
