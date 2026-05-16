@@ -531,7 +531,7 @@ Bir fonksiyon/özelliği değiştirmek için:
 
 **Çalışılan klasör:** `C:\Users\zeugmass\Desktop\TEST2\` (master), `C:\Users\zeugmass\Desktop\MrClean\` (git repo, yerel build/test) *(eski adı `GeminiSystemCare` — rebrand ile rename edildi)*
 
-**Mevcut sürüm:** `$global:AppVersion = "1.2.3"` — production-stable, GitHub'da yayında ([release](https://github.com/zeugmass/MrClean/releases/tag/v1.2.3)). Geri Bildirim sistemi + Karanlık Mod düz renk + sarı palette + ComboBox dropdown fix.
+**Mevcut sürüm:** `$global:AppVersion = "1.2.7"` — production-stable, GitHub'da yayında ([release](https://github.com/zeugmass/MrClean/releases/tag/v1.2.7)). Debug AllocConsole + Timer Group bug fix + Geri Bildirim 3 buton (Discord+GitHub+Clipboard) + Başlat Menüsü NoStartMenuMorePrograms + Baslat.cmd EXE öncelikli + (önceki) DNS netsh + Dashboard real-time + RamCleaner Standby + Karanlık Mod paketi.
 
 **GitHub repo:** `zeugmass/MrClean` (public)
 
@@ -544,13 +544,29 @@ Bir fonksiyon/özelliği değiştirmek için:
 6. GitHub Actions otomatik release oluşturur (~3 dk), kullanıcılar update bildirimi alır
 
 **Bilinen iyileştirme borcu (kayıt):**
-- W1 — Refresh-Winget-Status async: v1.2.2'de denendi (DispatcherTimer + runspace pool), detected list boş döndü, sync revert edildi. Hashtable arg geçişi veya scope sorunu olduğu sanılıyor — doğru debug ile gelecek sprint'te düzeltilebilir. Şu an sync 3-5 sn UI donmuyor (`Do-Events` yumuşatıyor).
-- Karanlık Mod Undo'da gerçek Windows Spotlight wallpaper modu yerine resim modu (img0.jpg) görünür. Sebep: `SystemParametersInfo`'ya path geçirildiğinde Win11 BackgroundType=3'ü ignore edip resim modunu zorluyor. Çözüm araştırması: `ms-settings:personalization-background` URI tetiklemek veya farklı Win32 API.
-- Build-Local.ps1 Spotlight cache reset helper (Win11 wallpaper cache temizleme komutu — test sırasında state bozulduğunda manuel düzeltme yerine).
+- W1 — Refresh-Winget-Status async: v1.2.2'de denendi başarısız, sync revert. Doğru debug ile gelecek sprint.
+- Karanlık Mod Undo'da gerçek Windows Spotlight wallpaper modu yerine resim modu (img0.jpg) görünür. Sebep: `SystemParametersInfo`'ya path geçirildiğinde Win11 BackgroundType=3'ü ignore edip resim modunu zorluyor.
+- Build-Local.ps1 Spotlight cache reset helper.
+- Test Et butonu (Dashboard) mevcut Aktif DNS'e de ping atabilir.
+- **(v1.2.7 yeni)** Geri Bildirim Telegram bot fallback (Discord + GitHub Issues + Panoya Kopyala mevcut, Telegram Türkiye'de daha açık erişim — low priority).
 
-**v1.2.0 release durumu:** GitHub'da yayında ama bug'lı (PS1 v1.0.6 ile compile → loop). **Öneri:** GitHub UI'dan v1.2.0 + diğer eski release'leri sil/draft'a çek (v1.2.3 latest olarak kalır).
+**v1.2.0 release durumu:** GitHub'da yayında ama bug'lı (PS1 v1.0.6 ile compile → loop). **Öneri:** GitHub UI'dan v1.2.0 + diğer eski release'leri sil/draft'a çek (v1.2.7 latest olarak kalır).
 
-**Son user feedback:** v1.2.3 yayında ve sorunsuz çalışıyor (2026-05-03). Geri Bildirim sistemi Discord'a düzgün gönderiyor, Karanlık Mod Apply düz renk siyah, Undo resim modu (Windows logo).
+**Son user feedback (v1.2.7):** Debug switch (AllocConsole) çalışıyor ✅, Zamanlayıcı 3 tweak'i aynı anda seçilebiliyor ✅, Geri Bildirim formu 4 buton ✅, Başlat Menüsü Tümü görünümü gizleniyor ✅. **Önceki release'lerin tüm özellikleri** stabil: DNS netsh, Dashboard real-time, RamCleaner tam temizlik, Karanlık Mod paketi.
+
+**📌 Kullanım yöntemi (kullanıcı ile netleşti — v1.2.7):**
+- **Günlük**: `TemizlikAsistani.exe` çift tıkla (kısayol Masaüstü'nde). PS2EXE `-RequireAdmin` UAC otomatik açar.
+- **Baslat.cmd**: legacy fallback, EXE öncelikli refactor edildi. PowerShell'den `.\Baslat.cmd` ile çalıştır (`.\` prefix güvenlik için zorunlu).
+- **Build-Local.ps1**: SADECE development (kod değişikliği sonrası yerel test, ~25 sn compile).
+- Auto-update: yerel `$global:AppVersion` ile GitHub release tag karşılaştırılır. Yerel kod değişikliği (Build-Local'sız) auto-update'le yansımaz.
+
+**v1.2.6 önemli teknik bulgular (kayıt — gelecekte referans):**
+- Win11'de `Set-DnsClientServerAddress` PowerShell cmdlet bazen TCP/IPv4 Properties dialog'da "Use following" flag'ini set etmiyor; **netsh `source=static` daha güvenilir** (registry'e direkt persistent yazıyor).
+- `Win32_NetworkAdapterConfiguration.DNSServerSearchOrder` WMI **cache netsh sonrası stale kalıyor**; `Get-DnsClientServerAddress` cmdlet'i live DNS Client query yapıyor.
+- `Load-DashboardData` 5 dakika cache kullanıyor — Apply-System-Tweaks sonu cache invalidate ZORUNLU (`$global:DashCache = $null` + `$global:DashCacheTime = $null`).
+- Dashboard refresh için `tabDashboard.IsSelected` check'i **kaldırılmalı** (Apply ederken kullanıcı Tweaks tab'da, IsSelected false → refresh hiç tetiklenmez).
+- `RamCleaner` C# class'a tam temizlik için `NtSetSystemInformation(SystemMemoryListInformation, MemoryPurgeStandbyList)` + `SeProfileSingleProcessPrivilege` enable şart (RAMMap pattern'i).
+- Modem/router DHCP cache: kullanıcı raporu "Otomatik DNS = Google" durumu **router'ın push ettiği DNS** kaynaklı, programın bug'ı değil. Router restart leases yeniler.
 
 **Sıradaki adım (yeni pencerede):**
 - Yeni özellik/fix istek varsa: TEST2'de değişiklik yap → AppVersion bump (workflow check zorunlu) → Build-Local.ps1 ile test et → push
