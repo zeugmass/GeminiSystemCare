@@ -440,7 +440,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.2.7"
+$global:AppVersion = "1.2.8"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/MrClean"
@@ -823,23 +823,11 @@ function Get-Default-Tweaks {
                 '
             },
 
-			@{ Name="Başlat Menüsü: Layout"; SubCategory="Başlat"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_Layout"; Type="DWord"; Data=1; Undo=0; RestartExplorer=$false },
-            @{ Name="Başlat Menüsü: En son Eklenen Kapat"; SubCategory="Başlat"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Start"; ValueName="ShowRecentList"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
-			@{ Name="Başlat Menüsü: Atlama listesi Kapat"; SubCategory="Başlat"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_TrackDocs"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
-			@{ Name="Gözatma Geçmişi Kapat"; SubCategory="Başlat"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_RecoPersonalizedSites"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
-			@{ Name="İpuçları, kısayollar için Önerileri Kapat"; SubCategory="Başlat"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_IrisRecommendations"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
-			@{ Name="Hesapla İlgili Bildirimleri Kapat"; SubCategory="Başlat"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_AccountNotifications"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
-			@{ Name="Başlatta Web Arama Sonuçlarını Kapat"; SubCategory="Başlat"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"; ValueName="BingSearchEnabled"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
-			@{  
-                Name="Başlat Önerilenler Bölümünü Kapat";
-				SubCategory="Başlat";
-				RestartExplorer="Hard";
-				Batch=@(
-                    @{ Key="HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"; ValueName="HideRecommendedSection"; Type="DWord"; Data=1; Undo=0 },
-					@{ Key="HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education"; ValueName="IsEducationEnvironment"; Type="DWord"; Data=1; Undo=0 },
-					@{ Key="HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start"; ValueName="HideRecommendedSection"; Type="DWord"; Data=1; Undo=0 }
-                ) 
-			},
+			# NOT (v1.2.8): 8 atomik "Başlat Menüsü" tweak'i + "Format Sonrası Temiz Düzen (FR33THY)" tek bir kompozit
+			# tweak'te birleştirildi -> "Başlat Menüsü: Tertemiz Paket (Tek Tık - Hepsi)" (aşağıda, Kişiselleştirme grubunun sonunda).
+			# Eski tweak'ler: Layout, En son Eklenen, Atlama listesi, Gözatma Geçmişi, İpuçları, Hesap Bildirimleri,
+			# Web Arama, Önerilenler Bölümü, Format Sonrası Temiz Düzen — hepsinin işi Tertemiz Paket içinde.
+
 			@{ Name="Arama Butonunu Gizle"; SubCategory="Görev Çubuğu"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"; ValueName="SearchboxTaskbarMode"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
             @{ Name="Görev Görünümü Butonunu Gizle"; SubCategory="Görev Çubuğu"; Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="ShowTaskViewButton"; Type="DWord"; Data=0; Undo=1; RestartExplorer=$false },
             @{
@@ -930,75 +918,81 @@ function Get-Default-Tweaks {
 				'
 			},
 
-			# === BAŞLAT MENÜSÜ TEMIZ DUZEN (FR33THY 1 Start Menu Taskbar.ps1 birebir, BIRLESTIRILMIS) ===
-			# 3 ayri tweak (Liste Gorunumu, Yeni Start Menu, Layout Import) tek kompozit tweak'te birlestirildi.
+			# === BAŞLAT MENÜSÜ TERTEMIZ PAKET (v1.2.8 — tek tıkla 9 ayar bir arada, 9 ayrı tweak'in birleşimi) ===
 			@{
-				Name="Başlat Menüsü: Format Sonrası Temiz Düzen (FR33THY)";
+				Name="Başlat Menüsü: Tertemiz Paket (Tek Tık - Hepsi)";
 				SubCategory="Başlat";
 				Risk="Medium";
 				RestartExplorer=$false;
-				Description="Format sonrasi tek tikla temiz Baslat menusu — FR33THY birebir kompozit. Uc isi tek seferde yapar:`n`n1) **Liste Gorunumu** — Tum Uygulamalar bolumunu kategoriden duz listeye cevirir (AllAppsViewMode=2)`n2) **Yeni Start Menu Duzeni** — Win11 22H2+ 'Daha Fazla Sabitleme/Oneri' duzeni (4 FeatureManagement Override 14 key)`n3) **Layout Import** — Win10 icin bos LayoutModificationTemplate XML, Win11 icin FR33THY'nin clean start2.bin dosyasi`n`n⚠️ DIKKAT: Mevcut sabit kayitlariniz (pinned tiles) silinir. Sifirdan baslamak icin uygundur.`n⚠️ Apply sirasinda Invoke-StartMenuLayoutImport helper Explorer'i 1 kez otomatik restart eder (Win10 layout flow gerekli).";
+				Description="Başlat menüsünün TÜM gereksiz öğelerini tek tıkla kapatır. 9 ayrı tweak'in birleşimi:`n`n• Layout 'Daha fazla sabitleme' (Start_Layout=1)`n• En son eklenen uygulamalar gizli (ShowRecentList=0)`n• Atlama listesi gizli (Start_TrackDocs=0)`n• Gözatma geçmişi kapatildi (Start_RecoPersonalizedSites=0)`n• İpuçları/Iris öneri motoru kapatildi (Start_IrisRecommendations=0)`n• Hesap bildirimleri gizli (Start_AccountNotifications=0)`n• Bing/web arama kapatildi (BingSearchEnabled=0)`n• Önerilenler paneli komple gizli (HideRecommendedSection HKLM Policy + Education policy)`n• Format Sonrası Temiz Düzen: AllAppsViewMode=Liste + FeatureManagement Override 14 + NoStartMenuMorePrograms + Win10/11 layout import (start2.bin)`n`n⚠️ DİKKAT: Mevcut sabit kayıtlarınız (pinned tiles) silinir. Sıfırdan tertemiz bir Başlat menüsü için ideal. Explorer apply sırasında 2 kez otomatik restart olur (helper içinde, MessageBox sorulmaz).";
 				DetectScript='
-					# Aktif sayilma kriteri: tum bilesenler uygulanmis olmali
-					# 1) AllAppsViewMode = 2 (List view)
-					# 2) En az bir FeatureManagement Override 14 key uygulanmis (EnabledState=2)
-					# 3) Win11 ise start2.bin var (Win10 LocalState yoksa atla)
-					$avm = (Get-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start" -Name "AllAppsViewMode" -ErrorAction SilentlyContinue).AllAppsViewMode
-					if ("$avm" -ne "2") { return $false }
-
+					# Aktif sayilma kriteri: tum 12 registry value + en az 1 FeatureManagement Override
+					# 1 tanesi bile yanlissa switch kapali (false). Tum 13 ayar dogru ise yesil (true).
+					$checks = @(
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; Name="Start_Layout"; Expected=1 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Start"; Name="ShowRecentList"; Expected=0 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; Name="Start_TrackDocs"; Expected=0 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; Name="Start_RecoPersonalizedSites"; Expected=0 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; Name="Start_IrisRecommendations"; Expected=0 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; Name="Start_AccountNotifications"; Expected=0 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"; Name="BingSearchEnabled"; Expected=0 },
+						@{ Path="HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"; Name="HideRecommendedSection"; Expected=1 },
+						@{ Path="HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education"; Name="IsEducationEnvironment"; Expected=1 },
+						@{ Path="HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start"; Name="HideRecommendedSection"; Expected=1 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Start"; Name="AllAppsViewMode"; Expected=2 },
+						@{ Path="HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"; Name="NoStartMenuMorePrograms"; Expected=1 }
+					)
+					foreach ($c in $checks) {
+						$val = (Get-ItemProperty -Path $c.Path -Name $c.Name -ErrorAction SilentlyContinue).$($c.Name)
+						if ("$val" -ne "$($c.Expected)") { return $false }
+					}
+					# FeatureManagement Override 14: en az birinde EnabledState=2 olmali (Win11 22H2+ duzeni)
 					$fm = (Get-ItemProperty -Path "HKLM:\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\14\2792562829" -Name "EnabledState" -ErrorAction SilentlyContinue).EnabledState
 					if ("$fm" -ne "2") { return $false }
-
-					$localState = "$env:USERPROFILE\AppData\Local\Packages\Microsoft.Windows.StartMenuExperienceHost_cw5n1h2txyewy\LocalState"
-					if (Test-Path $localState) {
-						$start2 = "$localState\start2.bin"
-						if (-not (Test-Path $start2)) { return $false }
-					}
 					return $true
 				';
-				Command='
-					Write-Host "[StartMenu] Format sonrasi temiz duzen uygulaniyor..."
-
-					# 1. AllAppsViewMode = Liste
-					Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start" -Name "AllAppsViewMode" -Value 2 -Type DWord -Force
-
-					# 2. FeatureManagement Override 14 (4 key) — Yeni Win11 22H2+ duzeni
-					$fmKeys = @("2792562829","3036241548","734731404","762256525")
-					foreach ($id in $fmKeys) {
-						$p = "HKLM:\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\14\$id"
-						if (-not (Test-Path $p)) { New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null }
-						Set-ItemProperty -Path $p -Name "EnabledState" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+				Batch=@(
+					# === 1-7: Atomik registry tweak leri (Başlat altındaki bireysel tweak lerle aynı) ===
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_Layout"; Type="DWord"; Data=1; Undo=0 },
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Start"; ValueName="ShowRecentList"; Type="DWord"; Data=0; Undo=1 },
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_TrackDocs"; Type="DWord"; Data=0; Undo=1 },
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_RecoPersonalizedSites"; Type="DWord"; Data=0; Undo=1 },
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_IrisRecommendations"; Type="DWord"; Data=0; Undo=1 },
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\Advanced"; ValueName="Start_AccountNotifications"; Type="DWord"; Data=0; Undo=1 },
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Search"; ValueName="BingSearchEnabled"; Type="DWord"; Data=0; Undo=1 },
+					# === 8: Önerilenler paneli komple gizle (HKLM Policy + Education) ===
+					@{ Key="HKLM:\SOFTWARE\Policies\Microsoft\Windows\Explorer"; ValueName="HideRecommendedSection"; Type="DWord"; Data=1; Undo=0 },
+					@{ Key="HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Education"; ValueName="IsEducationEnvironment"; Type="DWord"; Data=1; Undo=0 },
+					@{ Key="HKLM:\SOFTWARE\Microsoft\PolicyManager\current\device\Start"; ValueName="HideRecommendedSection"; Type="DWord"; Data=1; Undo=0 },
+					# === 9a: AllAppsViewMode (Liste görünümü) ===
+					@{ Key="HKCU:\Software\Microsoft\Windows\CurrentVersion\Start"; ValueName="AllAppsViewMode"; Type="DWord"; Data=2; Undo=0 },
+					# === 9b: Kompleks kısım (FeatureManagement + NoStartMenuMorePrograms + Layout Import helper) ===
+					@{
+						Command='
+							Write-Host "[Tertemiz Paket] FeatureManagement Override 14 + NoStartMenuMorePrograms + Layout Import uygulaniyor..."
+							$fmKeys = @("2792562829","3036241548","734731404","762256525")
+							foreach ($id in $fmKeys) {
+								$p = "HKLM:\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\14\$id"
+								if (-not (Test-Path $p)) { New-Item -Path $p -Force -ErrorAction SilentlyContinue | Out-Null }
+								Set-ItemProperty -Path $p -Name "EnabledState" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
+							}
+							$polPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+							if (-not (Test-Path $polPath)) { New-Item -Path $polPath -Force -ErrorAction SilentlyContinue | Out-Null }
+							Set-ItemProperty -Path $polPath -Name "NoStartMenuMorePrograms" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+							Invoke-StartMenuLayoutImport -Mode Clean
+						';
+						UndoCommand='
+							Write-Host "[Tertemiz Paket] Geri aliniyor..."
+							$fmKeys = @("2792562829","3036241548","734731404","762256525")
+							foreach ($id in $fmKeys) {
+								$p = "HKLM:\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\14\$id"
+								Remove-ItemProperty -Path $p -Name "EnabledState" -Force -ErrorAction SilentlyContinue
+							}
+							Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMorePrograms" -Force -ErrorAction SilentlyContinue
+							Invoke-StartMenuLayoutImport -Mode Default
+						'
 					}
-
-					# 3. (v1.2.7) Tum Uygulamalar gorununumunu kapat (NoStartMenuMorePrograms policy)
-					# Bu policy "Tumu Gor / Kilavuz / Kategori / Listele" gibi gorunum secimlerini gizler,
-					# sadece sabitlenmis uygulamalar gorunur. Format sonrasi minimal Baslat menusu icin ideal.
-					$polPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
-					if (-not (Test-Path $polPath)) { New-Item -Path $polPath -Force -ErrorAction SilentlyContinue | Out-Null }
-					Set-ItemProperty -Path $polPath -Name "NoStartMenuMorePrograms" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
-
-					# 4. Win10 LayoutModificationTemplate XML + Win11 start2.bin import
-					Invoke-StartMenuLayoutImport -Mode Clean
-				';
-				UndoCommand='
-					Write-Host "[StartMenu] Geri aliniyor..."
-
-					# 1. AllAppsViewMode = Kategori (default)
-					Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Start" -Name "AllAppsViewMode" -Value 0 -Type DWord -Force
-
-					# 2. FeatureManagement Override 14 sil
-					$fmKeys = @("2792562829","3036241548","734731404","762256525")
-					foreach ($id in $fmKeys) {
-						$p = "HKLM:\SYSTEM\ControlSet001\Control\FeatureManagement\Overrides\14\$id"
-						Remove-ItemProperty -Path $p -Name "EnabledState" -Force -ErrorAction SilentlyContinue
-					}
-
-					# 3. (v1.2.7) NoStartMenuMorePrograms policy sil (Tum Uygulamalar gorunumu geri gelir)
-					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMorePrograms" -Force -ErrorAction SilentlyContinue
-
-					# 4. Win10 default layout + Win11 start2.bin sil
-					Invoke-StartMenuLayoutImport -Mode Default
-				'
+				)
 			}
         )
 		"Oyun" = @(
@@ -2802,6 +2796,7 @@ $xaml = @"
                                 <UniformGrid Rows="1">
                                     <Button x:Name="btnFixUpdate" Content="🛠️ Windows Update Onar" Background="#E68A00" Foreground="White" Height="35" Margin="0,0,5,0" FontWeight="Bold"/>
                                     <Button x:Name="btnResetNet" Content="🌐 Ağ Ayarlarını Sıfırla" Background="#333" Foreground="White" Height="35" Margin="0,0,5,0"/>
+                                    <Button x:Name="btnResetWinHttpProxy" Content="📡 WinHTTP Proxy Sıfırla" Background="#333" Foreground="White" Height="35" Margin="0,0,5,0"/>
                                     <Button x:Name="btnSfcScan" Content="🔍 SFC / Scannow" Background="#006600" Foreground="White" Height="35" FontWeight="Bold"/>
                                 </UniformGrid>
                             </Border>
@@ -4112,6 +4107,7 @@ $tvBrowser = $Win.FindName('tvBrowser'); $tvSystem = $Win.FindName('tvSystem')
 $tvRepair = $Win.FindName('tvRepair'); $tvApps = $Win.FindName('tvApps')
 $btnFixUpdate = $Win.FindName('btnFixUpdate')
 $btnResetNet = $Win.FindName('btnResetNet')
+$btnResetWinHttpProxy = $Win.FindName('btnResetWinHttpProxy')
 $btnSfcScan = $Win.FindName('btnSfcScan')
 $tvShellBags = $Win.FindName('tvShellBags'); $tvWinget = $Win.FindName('tvWinget')
 
@@ -8038,6 +8034,27 @@ function Start-Worker-Process($ScriptContent, $activeBtn, $type, $TimeoutSeconds
 
         if ($type -match "WINGET|KURULUM|KALDIRMA") {
             try { Refresh-Winget-Status -Silent $true } catch { WpfLog "[HATA] Winget durumu: $($_.Exception.Message)" }
+        }
+
+        # v1.2.8: AĞ SIFIRLAMA tamamlandığında tweak cache + Dashboard cache invalidate
+        # (DNS / TCP optimization tweak'leri silindi — switch'ler stale göstermesin)
+        if ($type -match "AĞ SIFIRLAMA|AG SIFIRLAMA") {
+            $global:TweakStatusCache = @{}
+            try {
+                $cp = Get-TweakStatusCachePath
+                if ($cp -and (Test-Path $cp)) { Remove-Item $cp -Force -ErrorAction SilentlyContinue }
+            } catch {}
+            $global:DashCache = $null
+            $global:DashCacheTime = $null
+            # Dashboard tab açıksa anlık yenile
+            if ($tabDashboard -and $tabDashboard.IsSelected) {
+                try { Load-DashboardData } catch { WpfLog "[HATA] Dashboard refresh: $($_.Exception.Message)" }
+            }
+            # Tweaks tab açıksa Denetle butonu tetikle (switch'ler fresh hesaplansın)
+            if ($tabTweaks -and $tabTweaks.IsSelected -and $btnCheckTweaks) {
+                try { $btnCheckTweaks.RaiseEvent((New-Object System.Windows.RoutedEventArgs([System.Windows.Controls.Button]::ClickEvent))) } catch {}
+            }
+            WpfLog "[SİSTEM] Tweak status cache + Dashboard cache temizlendi (Ağ sıfırlama sonrası)."
         }
 
         try {
@@ -13006,29 +13023,101 @@ $btnResetNet.Add_Click({
         
         $s = @'
         try {
-            WS 'Ağ sıfırlanıyor...'
-            
-            Log '1/3: WinSock yapılandırması sıfırlanıyor...'
-            # Çıktıyı gizliyoruz (> $null) çünkü arka planda başarıyla yapıyor.
-            & netsh winsock reset > $null
-            Log '✅ WinSock temizlendi.'
-            
-            Log '2/3: TCP/IP yığını sıfırlanıyor...'
-            # Windows'un meşhur sahte "Erişim Engellendi" hatasını ve gereksiz OK mesajlarını gizliyoruz.
-            & netsh int ip reset > $null
-            Log '✅ TCP/IP sıfırlandı.'
-            
-            Log '3/3: DNS Önbelleği boşaltılıyor...'
+            WS 'Ag sifirlaniyor...'
+
+            WS 'Winsock sifirlaniyor...'
+            Log '1/5: WinSock yapilandirmasi sifirlaniyor (netsh winsock reset)...'
+            & netsh winsock reset | Out-Null
+            Log '✅ WinSock sifirlandi.'
+
+            WS 'TCP/IP sifirlaniyor...'
+            Log '2/5: TCP/IP yigini sifirlaniyor (netsh int ip reset)...'
+            & netsh int ip reset | Out-Null
+            Log '✅ TCP/IP sifirlandi.'
+
+            WS 'DNS DHCP zorlaniyor...'
+            Log '3/5: Aktif adapter DNS ayarlari DHCP olarak ayarlaniyor (per-adapter source=dhcp)...'
+            $adapters = Get-NetAdapter -ErrorAction SilentlyContinue | Where-Object { $_.Status -eq "Up" -and $_.InterfaceAlias -notmatch "Loopback|VPN|Virtual|Tunnel" }
+            foreach ($a in $adapters) {
+                $nm = $a.InterfaceAlias
+                & netsh interface ipv4 set dnsservers name="$nm" source=dhcp | Out-Null
+                & netsh interface ipv6 set dnsservers name="$nm" source=dhcp | Out-Null
+            }
+            Log '✅ DNS DHCP olarak ayarlandi.'
+
+            WS 'DHCP renew...'
+            Log '4/5: DHCP lease yenileniyor (ipconfig /release + /renew)...'
+            & ipconfig /release > $null
+            Start-Sleep -Milliseconds 500
+            & ipconfig /renew > $null
+            Log '✅ DHCP lease yenilendi.'
+
+            WS 'DNS cache temizleniyor...'
+            Log '5/5: DNS Önbelleği boşaltılıyor (ipconfig /flushdns)...'
             & ipconfig /flushdns > $null
             Log '✅ DNS önbelleği boşaltıldı.'
-            
-            Log '----------------------------------------'
-            Log '⚠️ İŞLEM TAMAMLANDI: Lütfen değişikliklerin uygulanması için BİLGİSAYARINIZI YENİDEN BAŞLATIN.'
-        } catch { 
-            Log "❌ HATA: $_" 
+
+            Log '⚠️ İŞLEM TAMAMLANDI: Lütfen değişikliklerin tam uygulanması için BİLGİSAYARINIZI YENİDEN BAŞLATIN.'
+        } catch {
+            Log "❌ HATA: $_"
         }
 '@
         Start-Worker-Process $s $btnResetNet "AĞ SIFIRLAMA"
+    }
+})
+
+# v1.2.8: WinHTTP Sistem Proxy Sıfırla (kullanıcı tarayıcı proxy ayarlarına dokunmaz, sadece sistem-seviyesi)
+$btnResetWinHttpProxy.Add_Click({
+    $msg = "WinHTTP sistem proxy ayarları sıfırlanacak.`n`n" +
+           "✅ Etkiler: Windows Update, Defender, Store, telemetri gibi sistem-seviyesi HTTP istekleri (WinHTTP katmanı) artık doğrudan internete çıkar — proxy bypass edilir.`n" +
+           "❌ Etkilemez: Edge/Chrome/Firefox gibi tarayıcı proxy ayarları (WinINET katmanı ayrıdır, Settings > Ağ > Proxy bölümünden yönetilir).`n`n" +
+           "Bu işlem programın diğer ayarlarını bozmaz. Genelde malware/VPN sonrası temizlik veya 'Windows Update çalışmıyor' sorunları için kullanılır.`n`n" +
+           "Onaylıyor musunuz?"
+    if ([System.Windows.MessageBox]::Show($msg, "WinHTTP Proxy Sıfırla", [System.Windows.MessageBoxButton]::YesNo, [System.Windows.MessageBoxImage]::Question) -eq 'Yes') {
+        $txtLog.Text = ""
+        WpfLog "--- WINHTTP PROXY SIFIRLAMA ---"
+        try {
+            # ProcessStartInfo + Hidden ile terminal flash önlenir (PS2EXE -NoConsole modu)
+            $psi = New-Object System.Diagnostics.ProcessStartInfo
+            $psi.FileName               = "netsh.exe"
+            $psi.Arguments              = "winhttp reset proxy"
+            $psi.UseShellExecute        = $false
+            $psi.CreateNoWindow         = $true
+            $psi.WindowStyle            = 'Hidden'
+            $psi.RedirectStandardOutput = $true
+            $psi.RedirectStandardError  = $true
+            $psi.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+            $proc = [System.Diagnostics.Process]::Start($psi)
+            $stdout = $proc.StandardOutput.ReadToEnd()
+            $proc.WaitForExit()
+
+            if ($proc.ExitCode -eq 0) {
+                WpfLog "✅ WinHTTP proxy sıfırlandı."
+                if ($stdout) { WpfLog "   Çıktı: $($stdout.Trim())" }
+
+                # Mevcut durumu da göster (doğrulama için)
+                $psi2 = New-Object System.Diagnostics.ProcessStartInfo
+                $psi2.FileName = "netsh.exe"; $psi2.Arguments = "winhttp show proxy"
+                $psi2.UseShellExecute = $false; $psi2.CreateNoWindow = $true
+                $psi2.RedirectStandardOutput = $true; $psi2.StandardOutputEncoding = [System.Text.Encoding]::UTF8
+                $p2 = [System.Diagnostics.Process]::Start($psi2)
+                $current = $p2.StandardOutput.ReadToEnd()
+                $p2.WaitForExit()
+                WpfLog "   Şu anki durum: $($current.Trim())"
+
+                # v1.2.8: Dashboard cache invalidate (proxy değişimi sonrası network state taze gösterilsin)
+                $global:DashCache = $null
+                $global:DashCacheTime = $null
+                if ($tabDashboard -and $tabDashboard.IsSelected) {
+                    try { Load-DashboardData } catch {}
+                }
+            } else {
+                WpfLog "❌ HATA: netsh exit code $($proc.ExitCode)"
+                if ($stdout) { WpfLog "   $($stdout.Trim())" }
+            }
+        } catch {
+            WpfLog "❌ HATA: $($_.Exception.Message)"
+        }
     }
 })
 
