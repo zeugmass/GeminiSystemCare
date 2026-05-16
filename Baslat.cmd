@@ -1,10 +1,20 @@
 @echo off
 
 REM ═══════════════════════════════════════════════════════
-REM  1. Yonetici Yetki Kontrolu (UAC Elevation)
-REM    Cift tiklamada otomatik UAC penceresi acar.
-REM    Zaten admin ise direkt devam eder.
+REM  MrClean Launcher (v1.2.7 — EXE oncelikli)
+REM
+REM  Akis:
+REM   1. UAC elevation
+REM   2. Coklu calisma kontrolu (process tarama)
+REM   3. EXE varsa onu baslat (production), yoksa PS1'i baslat (development fallback)
+REM
+REM  GUNLUK KULLANIM ICIN: bu dosyayi cift tiklamak yerine
+REM  dogrudan TemizlikAsistani.exe'yi cift tiklamaniz daha temizdir.
+REM  EXE icinde -RequireAdmin flag'i var, UAC otomatik acilir.
+REM  Bu Baslat.cmd ek olarak "zaten calisiyor mu" kontrolu yapar.
 REM ═══════════════════════════════════════════════════════
+
+REM 1. UAC kontrolu
 net session >nul 2>&1
 if %errorlevel% equ 0 goto :ADMIN_OK
 
@@ -18,40 +28,48 @@ exit /b
 setlocal
 title MrClean Sistem Bakim Araci
 
-REM ═══════════════════════════════════════════════════════
-REM  2. Dosya Varlik Kontrolu
-REM ═══════════════════════════════════════════════════════
-if not exist "%~dp0TemizlikAsistani.ps1" (
-    echo [HATA] TemizlikAsistani.ps1 bulunamadi!
-    echo Aranan konum: %~dp0TemizlikAsistani.ps1
+REM 2. Dosya varlik kontrolu — EXE varsa onu kullan, yoksa PS1'e fallback
+set "EXEPATH=%~dp0TemizlikAsistani.exe"
+set "PS1PATH=%~dp0TemizlikAsistani.ps1"
+set "TARGET="
+
+if exist "%EXEPATH%" (
+    set "TARGET=EXE"
+) else if exist "%PS1PATH%" (
+    set "TARGET=PS1"
+) else (
+    echo [HATA] Ne TemizlikAsistani.exe ne de TemizlikAsistani.ps1 bulundu!
+    echo Aranan konum: %~dp0
     pause
     exit /b 1
 )
 
-REM ═══════════════════════════════════════════════════════
-REM  3. Coklu Calisma Onleme (Process Kontrolu)
-REM    Lock dosyasi yerine canli process kontrolu yapar.
-REM    Crash durumunda process oldugu icin sorun olmaz.
-REM ═══════════════════════════════════════════════════════
-powershell -NoProfile -Command "if(Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" -EA 0 | Where-Object{$_.CommandLine -like '*TemizlikAsistani.ps1*' -and $_.ProcessId -ne $PID}){exit 1}else{exit 0}"
+REM 3. Coklu calisma kontrolu — EXE veya PS1 zaten calisiyor mu?
+powershell -NoProfile -Command "$exe = Get-Process -Name TemizlikAsistani -ErrorAction SilentlyContinue; $ps1 = Get-CimInstance Win32_Process -Filter \"Name='powershell.exe'\" -EA 0 | Where-Object{$_.CommandLine -like '*TemizlikAsistani.ps1*' -and $_.ProcessId -ne $PID}; if ($exe -or $ps1) { exit 1 } else { exit 0 }"
 if %errorlevel% equ 1 (
-    echo [!] Uygulama zaten calisiyor.
+    echo [!] MrClean zaten calisiyor (gorev cubugu/system tray'de kontrol edin).
     pause
     exit /b 1
 )
 
-REM ═══════════════════════════════════════════════════════
-REM  4. Calistirma
-REM ═══════════════════════════════════════════════════════
+REM 4. Calistir
 if /I "%1"=="debug" goto :DEBUG_MODE
 
-REM Normal mod: gizli pencere
-start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0TemizlikAsistani.ps1"
-exit /b
+if "%TARGET%"=="EXE" (
+    start "" "%EXEPATH%"
+    exit /b
+) else (
+    start "" powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%PS1PATH%"
+    exit /b
+)
 
 :DEBUG_MODE
-echo [DEBUG] TemizlikAsistani baslatiliyor...
-powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File "%~dp0TemizlikAsistani.ps1"
+echo [DEBUG] MrClean baslatiliyor...
+if "%TARGET%"=="EXE" (
+    "%EXEPATH%"
+) else (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Normal -File "%PS1PATH%"
+)
 echo.
 echo [DEBUG] Islem tamamlandi. Cikis kodu: %errorlevel%
 pause

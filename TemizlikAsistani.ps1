@@ -57,10 +57,17 @@ using System.Security.Cryptography;
 using System.Diagnostics;
 
 public class NativeMethods {
-    [DllImport("user32.dll")] 
+    [DllImport("user32.dll")]
     public static extern bool ShowWindow(int handle, int state);
-    [DllImport("kernel32.dll")] 
+    [DllImport("kernel32.dll")]
     public static extern int GetConsoleWindow();
+    // v1.2.7: Debug switch icin (-NoConsole modda console yok, AllocConsole ile yeni olustur)
+    [DllImport("kernel32.dll")]
+    public static extern bool AllocConsole();
+    [DllImport("kernel32.dll")]
+    public static extern bool FreeConsole();
+    [DllImport("kernel32.dll")]
+    public static extern bool SetConsoleTitle(string title);
     [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Auto)]
     public static extern IntPtr SendMessageTimeout(IntPtr hWnd, uint Msg, UIntPtr wParam, string lParam, uint fuFlags, uint uTimeout, out UIntPtr lpdwResult);
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
@@ -433,7 +440,7 @@ $global:DetectedGpuVendors = $null
 # AppVersion: Mevcut programin SemVer numarasi. Her release'de elle artirilir + GitHub'a tag olarak push edilir.
 # GitHub Actions tag'i alir, PS2EXE ile EXE compile eder, Release olusturur, SHA256SUMS yazar.
 # Program acilis kontrolu bu sayiyi GitHub'taki en son release tag'i ile karsilastirir.
-$global:AppVersion = "1.2.6"
+$global:AppVersion = "1.2.7"
 
 # AppRepo: GitHub kullanici/repo formatinda. README'de "burayi kendi repo'na gore degistir" talimati.
 $global:AppRepo = "zeugmass/MrClean"
@@ -963,7 +970,14 @@ function Get-Default-Tweaks {
 						Set-ItemProperty -Path $p -Name "EnabledState" -Value 2 -Type DWord -Force -ErrorAction SilentlyContinue
 					}
 
-					# 3. Win10 LayoutModificationTemplate XML + Win11 start2.bin import
+					# 3. (v1.2.7) Tum Uygulamalar gorununumunu kapat (NoStartMenuMorePrograms policy)
+					# Bu policy "Tumu Gor / Kilavuz / Kategori / Listele" gibi gorunum secimlerini gizler,
+					# sadece sabitlenmis uygulamalar gorunur. Format sonrasi minimal Baslat menusu icin ideal.
+					$polPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer"
+					if (-not (Test-Path $polPath)) { New-Item -Path $polPath -Force -ErrorAction SilentlyContinue | Out-Null }
+					Set-ItemProperty -Path $polPath -Name "NoStartMenuMorePrograms" -Value 1 -Type DWord -Force -ErrorAction SilentlyContinue
+
+					# 4. Win10 LayoutModificationTemplate XML + Win11 start2.bin import
 					Invoke-StartMenuLayoutImport -Mode Clean
 				';
 				UndoCommand='
@@ -979,7 +993,10 @@ function Get-Default-Tweaks {
 						Remove-ItemProperty -Path $p -Name "EnabledState" -Force -ErrorAction SilentlyContinue
 					}
 
-					# 3. Win10 default layout + Win11 start2.bin sil
+					# 3. (v1.2.7) NoStartMenuMorePrograms policy sil (Tum Uygulamalar gorunumu geri gelir)
+					Remove-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Policies\Explorer" -Name "NoStartMenuMorePrograms" -Force -ErrorAction SilentlyContinue
+
+					# 4. Win10 default layout + Win11 start2.bin sil
 					Invoke-StartMenuLayoutImport -Mode Default
 				'
 			}
@@ -1875,31 +1892,31 @@ function Get-Default-Tweaks {
             # ⚠️ UYARI: Bu üç ayar birbirini etkiler. Grup mantığı ile sadece biri aktif olabilir.
             # Valorant/Ricochet oynuyorsanız SADECE "Dinamik Tık Kapat" kullanın.
             # "HPET Kapat" + "Platform Tick Zorla" kombinasyonu Ricochet'te sorun çıkarabilir.
-            @{ 
-                Name="Dinamik Tık (Dynamic Tick) Kapat"; 
+            # NOT (v1.2.7): Group="TimerMode" kaldirildi — 3 timer tweak'i mutual exclusive yapan grup
+            # davranisi vardi (birini secince digerleri kapaniyordu). Kullanici 3 unu birden secebilir,
+            # acikma kullanici karari (description'larda anti-cheat uyarisi var).
+            @{
+                Name="Dinamik Tık (Dynamic Tick) Kapat";
                 SubCategory="Zamanlayıcı (Timer)";
-                Group="TimerMode";
 				Description="İşlemcinin güç tasarrufu için zamanlayıcıyı durdurmasını engeller. CPU'nun sürekli uyanık kalmasını sağlayarak oyun içi anlık takılmaları (stutter) önler. ✅ Tüm anti-cheat sistemleriyle uyumludur.";
-                Command='bcdedit /set disabledynamictick yes'; 
-                UndoCommand='bcdedit /deletevalue disabledynamictick'; 
-                RestartExplorer=$false 
+                Command='bcdedit /set disabledynamictick yes';
+                UndoCommand='bcdedit /deletevalue disabledynamictick';
+                RestartExplorer=$false
             },
-            @{ 
-                Name="HPET (Platform Clock) Kapat"; 
+            @{
+                Name="HPET (Platform Clock) Kapat";
                 SubCategory="Zamanlayıcı (Timer)";
-                Group="TimerMode";
 				Description="Eski nesil yüksek hassasiyetli olay zamanlayıcısını kapatır. Modern işlemcilerde (Ryzen/Core) HPET'in kapalı olması DPC gecikmesini düşürür ve FPS'i stabilize eder. ⚠️ Valorant/Ricochet ile 'Platform Tick Zorla' ayarıyla BİRLİKTE kullanmayın.";
-                Command='bcdedit /deletevalue useplatformclock'; 
-                UndoCommand='bcdedit /set useplatformclock yes'; 
-                RestartExplorer=$false 
+                Command='bcdedit /deletevalue useplatformclock';
+                UndoCommand='bcdedit /set useplatformclock yes';
+                RestartExplorer=$false
             },
-            @{ 
+            @{
                 Name="Platform Tick Zorla (Stabilite)";
 				Description="Tüm sistem zamanlayıcılarını tek bir kaynakta (Platform) eşitler. Zamanlayıcılar arası kaymaları önleyerek oyunlarda daha akıcı bir görüntü sunar. ⚠️ Valorant/Ricochet ile 'HPET Kapat' ayarıyla BİRLİKTE kullanmayın — timer manipulation olarak işaretlenebilir.";
                 SubCategory="Zamanlayıcı (Timer)";
-                Group="TimerMode";
-                Command='bcdedit /set useplatformtick yes'; 
-                UndoCommand='bcdedit /deletevalue useplatformtick'; 
+                Command='bcdedit /set useplatformtick yes';
+                UndoCommand='bcdedit /deletevalue useplatformtick';
                 RestartExplorer=$false 
             }
         )
@@ -3800,7 +3817,7 @@ $xamlFeedback = @"
 <Window
     xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'
     xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml'
-    Title='💬 Geri Bildirim Gönder' Height='560' Width='540'
+    Title='💬 Geri Bildirim Gönder' Height='600' Width='620'
     Background='#181818' WindowStartupLocation='CenterScreen' WindowStyle='ToolWindow' ResizeMode='NoResize'>
     <Window.Resources>
         <!-- Ana pencereden birebir kopya — Silme Yontemi dropdown'u ile ayni stil -->
@@ -3875,7 +3892,7 @@ $xamlFeedback = @"
         </Grid.RowDefinitions>
 
         <TextBlock Grid.Row='0' Text='Geri Bildirim Gönder' Foreground='White' FontSize='18' FontWeight='Bold' Margin='0,0,0,4'/>
-        <TextBlock Grid.Row='1' Text='Hata bildir, öneri yap, ya da soru sor — Discord kanalına anonim olarak gider.' Foreground='#888' FontSize='11' Margin='0,0,0,12' TextWrapping='Wrap'/>
+        <TextBlock Grid.Row='1' Text='Hata bildir, öneri yap, ya da soru sor. 3 gönderim seçeneği: Panoya kopyala (manuel paylaş), GitHub Issue (browser açar), Discord (anonim webhook — Türkiye dahil bazı ülkelerde erişim engelli olabilir).' Foreground='#888' FontSize='11' Margin='0,0,0,12' TextWrapping='Wrap'/>
 
         <!-- TUR + BASLIK -->
         <Grid Grid.Row='2' Margin='0,0,0,10'>
@@ -3920,8 +3937,10 @@ $xamlFeedback = @"
 
         <!-- BUTONLAR -->
         <StackPanel Grid.Row='8' Orientation='Horizontal' HorizontalAlignment='Right' Margin='0,12,0,0'>
-            <Button x:Name='btnFeedbackCancel' Content='İptal' Background='#444' Foreground='White' Width='90' Height='32' Margin='0,0,8,0'/>
-            <Button x:Name='btnFeedbackSend' Content='📨 Gönder' Background='#0A6E0A' Foreground='White' Width='130' Height='32' FontWeight='Bold'/>
+            <Button x:Name='btnFeedbackCancel' Content='İptal' Background='#444' Foreground='White' Width='85' Height='32' Margin='0,0,8,0'/>
+            <Button x:Name='btnFeedbackClipboard' Content='📋 Panoya Kopyala' Background='#444' Foreground='White' Width='150' Height='32' Margin='0,0,8,0'/>
+            <Button x:Name='btnFeedbackGitHub' Content='🐙 GitHub Issue' Background='#24292E' Foreground='White' Width='130' Height='32' Margin='0,0,8,0'/>
+            <Button x:Name='btnFeedbackSend' Content='💬 Discord' Background='#5865F2' Foreground='White' Width='110' Height='32' FontWeight='Bold'/>
         </StackPanel>
     </Grid>
 </Window>
@@ -10093,8 +10112,87 @@ function Show-FeedbackWindow {
         $lblStat  = $winFb.FindName('lblFeedbackStatus')
         $btnSend  = $winFb.FindName('btnFeedbackSend')
         $btnCanc  = $winFb.FindName('btnFeedbackCancel')
+        $btnClip  = $winFb.FindName('btnFeedbackClipboard')
+        $btnGH    = $winFb.FindName('btnFeedbackGitHub')
 
         $btnCanc.Add_Click({ $winFb.Close() })
+
+        # v1.2.7: Form icerigini "plain text" olarak compose eden helper — script: scope ki Add_Click handler'lari erisebilsin.
+        $script:_BuildFeedbackBody = {
+            $tagItem = $cb.SelectedItem
+            $typeLabel = if ($tagItem.Tag -eq "bug") { "🐛 Hata" } elseif ($tagItem.Tag -eq "suggestion") { "💡 Öneri" } else { "❓ Soru" }
+            $lines = @()
+            $lines += "## $typeLabel"
+            $lines += ""
+            $lines += $body.Text.Trim()
+            $lines += ""
+            if (-not [string]::IsNullOrWhiteSpace($email.Text)) {
+                $lines += "**E-posta**: $($email.Text.Trim())"
+                $lines += ""
+            }
+            if ($chkSys.IsChecked) {
+                $winInfo = "?"
+                try {
+                    $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
+                    if ($os) { $winInfo = "$($os.Caption) (Build $($os.BuildNumber))" }
+                } catch {}
+                $lines += "---"
+                $lines += "**Sistem bilgileri**"
+                $lines += "- Windows: $winInfo"
+                $lines += "- MrClean: v$($global:AppVersion)"
+                try {
+                    if ($txtLog -and $txtLog.Text) {
+                        $allLines = $txtLog.Text -split "`r?`n"
+                        $tail = $allLines | Select-Object -Last 30 | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }
+                        if ($tail.Count -gt 0) {
+                            $lines += ""
+                            $lines += "**Son log satırları:**"
+                            $lines += '```'
+                            $lines += $tail
+                            $lines += '```'
+                        }
+                    }
+                } catch {}
+            }
+            return ($lines -join "`r`n")
+        }
+
+        # 📋 PANOYA KOPYALA (her zaman calisir, internet/Discord gerekmez)
+        $btnClip.Add_Click({
+            $titleVal = $title.Text.Trim()
+            if ([string]::IsNullOrWhiteSpace($titleVal)) {
+                $lblStat.Foreground = '#FF6B6B'; $lblStat.Text = "Başlık boş olamaz."; return
+            }
+            try {
+                $plainBody = & $script:_BuildFeedbackBody
+                $full = "# $titleVal`r`n`r`n$plainBody"
+                [System.Windows.Clipboard]::SetText($full)
+                $lblStat.Foreground = '#90EE90'; $lblStat.Text = "✅ Panoya kopyalandı — istediğiniz yere yapıştırın."
+            } catch {
+                $lblStat.Foreground = '#FF6B6B'; $lblStat.Text = "❌ Kopyalama hatası: $($_.Exception.Message)"
+            }
+        })
+
+        # 🐙 GITHUB ISSUE — pre-filled URL ile tarayicida ac (Discord erisimi olmayanlar icin)
+        $btnGH.Add_Click({
+            $titleVal = $title.Text.Trim()
+            if ([string]::IsNullOrWhiteSpace($titleVal) -or $titleVal.Length -lt 3) {
+                $lblStat.Foreground = '#FF6B6B'; $lblStat.Text = "Başlık en az 3 karakter olmalı."; return
+            }
+            try {
+                Add-Type -AssemblyName System.Web -ErrorAction SilentlyContinue
+                $tagItem = $cb.SelectedItem
+                $label = if ($tagItem.Tag -eq "bug") { "bug" } elseif ($tagItem.Tag -eq "suggestion") { "enhancement" } else { "question" }
+                $plainBody = & $script:_BuildFeedbackBody
+                $encodedTitle = [System.Web.HttpUtility]::UrlEncode($titleVal)
+                $encodedBody  = [System.Web.HttpUtility]::UrlEncode($plainBody)
+                $url = "https://github.com/$($global:AppRepo)/issues/new?title=$encodedTitle&body=$encodedBody&labels=$label"
+                Start-Process $url
+                $lblStat.Foreground = '#90EE90'; $lblStat.Text = "✅ Tarayıcı açıldı — GitHub'da Submit edin."
+            } catch {
+                $lblStat.Foreground = '#FF6B6B'; $lblStat.Text = "❌ GitHub URL hatası: $($_.Exception.Message)"
+            }
+        })
 
         $btnSend.Add_Click({
             $titleVal = $title.Text.Trim()
@@ -14263,11 +14361,27 @@ $btnRun.Add_Click({
     $btnAnalyze.IsEnabled = $true
 })
 
-# Debug Checkbox — Console penceresi göster/gizle (Out-Null: bool return suppression)
+# Debug Checkbox — Console penceresi göster/gizle.
+# v1.2.7: PS2EXE -NoConsole modda console yok ($global:ConsoleHandle=0). AllocConsole ile yeni console
+# olusturuyoruz, debug switch off oldugunda da Hide ile gizliyoruz (FreeConsole cagirmiyoruz cunku
+# program kapanisinda IOException riskine girer — sadece pencereyi hide ediyoruz).
 if ($chkDebug) {
     $chkDebug.Add_Click({
-        if ($chkDebug.IsChecked) { [NativeMethods]::ShowWindow($global:ConsoleHandle, 5) | Out-Null }
-        else                     { [NativeMethods]::ShowWindow($global:ConsoleHandle, 0) | Out-Null }
+        if ($chkDebug.IsChecked) {
+            # Console yoksa yeni olustur
+            if (-not $global:ConsoleHandle -or $global:ConsoleHandle -eq 0) {
+                [NativeMethods]::AllocConsole() | Out-Null
+                $global:ConsoleHandle = [NativeMethods]::GetConsoleWindow()
+                [NativeMethods]::SetConsoleTitle("MrClean — Debug Console") | Out-Null
+            }
+            if ($global:ConsoleHandle -ne 0) {
+                [NativeMethods]::ShowWindow($global:ConsoleHandle, 5) | Out-Null   # SW_SHOW
+            }
+        } else {
+            if ($global:ConsoleHandle -ne 0) {
+                [NativeMethods]::ShowWindow($global:ConsoleHandle, 0) | Out-Null   # SW_HIDE
+            }
+        }
     })
 }
 
